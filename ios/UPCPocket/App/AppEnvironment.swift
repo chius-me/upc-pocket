@@ -30,9 +30,14 @@ enum FocusMode: String, CaseIterable, Identifiable, Sendable {
 final class AppEnvironment {
     private let preferencesStore: PreferencesStore
     private let accountStore: SchoolAccountStore
+    private(set) var cardBalanceStore: CardBalanceStore!
+    let powerStore: PowerStore
+    let freeClassroomService: FreeClassroomService
 
     private(set) var preferences = AppPreferences()
     private(set) var accountState = SchoolAccountState()
+    private(set) var cardBalanceState = CardBalanceUiState()
+    private(set) var powerState = PowerUiState()
     private(set) var isLoaded = false
 
     private(set) var focusMode: FocusMode = .focus25
@@ -44,10 +49,19 @@ final class AppEnvironment {
 
     init(
         preferencesStore: PreferencesStore = PreferencesStore(),
-        accountStore: SchoolAccountStore = SchoolAccountStore()
+        accountStore: SchoolAccountStore = SchoolAccountStore(),
+        powerStore: PowerStore = PowerStore(),
+        freeClassroomService: FreeClassroomService = FreeClassroomService()
     ) {
         self.preferencesStore = preferencesStore
         self.accountStore = accountStore
+        self.powerStore = powerStore
+        self.freeClassroomService = freeClassroomService
+        self.cardBalanceStore = CardBalanceStore(
+            identityProvider: { [accountStore] in
+                await accountStore.currentStudentIdentitySnapshot()
+            }
+        )
     }
 
     var focusProgress: Double {
@@ -65,8 +79,11 @@ final class AppEnvironment {
         await LocalStorageExclusion.shared.applyDefaultExclusions()
         async let loadedPrefs = preferencesStore.load()
         async let restoredAccount = accountStore.restore()
+        async let restoredPower = powerStore.restore()
         preferences = await loadedPrefs
         accountState = await restoredAccount
+        powerState = await restoredPower
+        cardBalanceState = await cardBalanceStore.restore()
         isLoaded = true
     }
 
@@ -87,15 +104,54 @@ final class AppEnvironment {
     }
 
     func saveAccount(loginName: String, password: String) async -> AccountWriteResult {
+        let previousAccountId = accountState.accountId
         let (result, updatedState) = await accountStore.save(rawLoginName: loginName, password: password)
         accountState = updatedState
+        if case .success = result, previousAccountId != updatedState.accountId {
+            cardBalanceState = await cardBalanceStore.clearForAccountChange()
+        } else {
+            cardBalanceState = await cardBalanceStore.restore()
+        }
         return result
     }
 
     func clearAccount() async -> Bool {
         let (ok, updatedState) = await accountStore.clear()
         accountState = updatedState
+        if ok {
+            cardBalanceState = await cardBalanceStore.clearForAccountChange()
+        }
         return ok
+    }
+
+    func refreshCardBalance() async {
+        cardBalanceState.isRefreshing = true
+        cardBalanceState.errorMessage = nil
+        let (_, updated) = await cardBalanceStore.refresh()
+        cardBalanceState = updated
+    }
+
+    func clearCardBalanceCache() async {
+        cardBalanceState = await cardBalanceStore.clearCache()
+    }
+
+    func loadPowerBuildings() async {
+        powerState.isLoadingBuildings = true
+        powerState.errorMessage = nil
+        let (_, updated) = await powerStore.loadBuildings()
+        powerState = updated
+    }
+
+    func queryPower(building: String, room: String) async {
+        powerState.isQuerying = true
+        powerState.errorMessage = nil
+        powerState.candidates = []
+        let (_, updated) = await powerStore.query(buildingInput: building, roomInput: room)
+        powerState = updated
+    }
+
+    func clearSavedPower() async {
+        powerState = await powerStore.clearSaved()
     }
 
     func selectFocusMode(_ mode: FocusMode) {

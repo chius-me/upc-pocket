@@ -10,6 +10,7 @@ import java.io.IOException
 import java.nio.charset.StandardCharsets
 import java.security.MessageDigest
 import java.util.Properties
+import java.util.concurrent.CopyOnWriteArrayList
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
@@ -23,6 +24,7 @@ import me.chius.upcpocket.core.model.AccountStatus
 import me.chius.upcpocket.core.model.AccountWriteFailure
 import me.chius.upcpocket.core.model.AccountWriteResult
 import me.chius.upcpocket.core.model.SchoolAccountState
+import me.chius.upcpocket.core.model.SchoolStudentIdentity
 import me.chius.upcpocket.core.model.StudentIdValidator
 import me.chius.upcpocket.core.model.maskLoginName
 
@@ -51,7 +53,16 @@ class SchoolAccountRepository internal constructor(
     private val _state = MutableStateFlow(SchoolAccountState())
     val state: StateFlow<SchoolAccountState> = _state.asStateFlow()
 
+    private val _studentIdentity = MutableStateFlow<SchoolStudentIdentity?>(null)
+    val studentIdentity: StateFlow<SchoolStudentIdentity?> = _studentIdentity.asStateFlow()
+
+    private val invalidationListeners = CopyOnWriteArrayList<suspend () -> Unit>()
+
     private var initialized = false
+
+    fun addInvalidationListener(listener: suspend () -> Unit) {
+        invalidationListeners.add(listener)
+    }
 
     suspend fun restore() {
         withContext(ioDispatcher) {
@@ -84,12 +95,13 @@ class SchoolAccountRepository internal constructor(
         }
     }
 
-    private fun restoreLocked() {
+    private suspend fun restoreLocked() {
         initialized = true
         val metadataFile = File(directory, METADATA_FILE)
         val credentialFile = File(directory, CREDENTIAL_FILE)
 
         if (!metadataFile.exists() && !credentialFile.exists()) {
+            _studentIdentity.value = null
             _state.value = SchoolAccountState(status = AccountStatus.UNSET, generation = 0L)
             return
         }
@@ -110,6 +122,7 @@ class SchoolAccountRepository internal constructor(
                 if (credentialFile.exists()) {
                     credentialFile.delete()
                 }
+                _studentIdentity.value = null
                 _state.value = SchoolAccountState(
                     status = AccountStatus.UNSET,
                     generation = metadata.generation,
@@ -120,6 +133,7 @@ class SchoolAccountRepository internal constructor(
                 if (credentialFile.exists()) {
                     credentialFile.delete()
                 }
+                _studentIdentity.value = null
                 _state.value = SchoolAccountState(
                     status = AccountStatus.RECOVERY_REQUIRED,
                     generation = metadata.generation,
@@ -141,19 +155,29 @@ class SchoolAccountRepository internal constructor(
                     enterRecoveryLocked(baseGeneration = metadata.generation)
                     return
                 }
+                val validStudentId = StudentIdValidator.isValid(decrypted.loginName)
+                _studentIdentity.value = if (validStudentId) {
+                    SchoolStudentIdentity(
+                        accountId = computedAccountId,
+                        studentId = decrypted.loginName,
+                        generation = decrypted.generation,
+                    )
+                } else {
+                    null
+                }
                 _state.value = SchoolAccountState(
                     status = AccountStatus.SAVED_UNVERIFIED,
                     generation = decrypted.generation,
                     accountId = computedAccountId,
                     maskedLoginName = maskLoginName(decrypted.loginName),
-                    isValidStudentId = StudentIdValidator.isValid(decrypted.loginName),
+                    isValidStudentId = validStudentId,
                     savedAtEpochMillis = decrypted.savedAtEpochMillis,
                 )
             }
         }
     }
 
-    private fun saveLocked(rawLoginName: String, password: CharArray): AccountWriteResult {
+    private suspend fun saveLocked(rawLoginName: String, password: CharArray): AccountWriteResult {
         if (!initialized) {
             restoreLocked()
         }
@@ -169,6 +193,7 @@ class SchoolAccountRepository internal constructor(
             return AccountWriteResult.Failure(AccountWriteFailure.INVALID_PASSWORD)
         }
 
+        val previousAccountId = _state.value.accountId
         val nextGeneration = _state.value.generation + 1L
         val savedAt = clock().coerceAtLeast(1L)
         val accountId = stableAccountId(loginName)
@@ -190,6 +215,10 @@ class SchoolAccountRepository internal constructor(
         }
 
         return try {
+            if (previousAccountId != null && previousAccountId != accountId) {
+                _studentIdentity.value = null
+                notifyInvalidationListeners()
+            }
             directory.mkdirs()
             writeAtomically(File(directory, CREDENTIAL_FILE), encryptedBytes)
             val metadata = PersistedMetadata(
@@ -201,6 +230,15 @@ class SchoolAccountRepository internal constructor(
                 savedAtEpochMillis = savedAt,
             )
             writeAtomically(File(directory, METADATA_FILE), encodeMetadata(metadata))
+            _studentIdentity.value = if (validStudentId) {
+                SchoolStudentIdentity(
+                    accountId = accountId,
+                    studentId = loginName,
+                    generation = nextGeneration,
+                )
+            } else {
+                null
+            }
             _state.value = SchoolAccountState(
                 status = AccountStatus.SAVED_UNVERIFIED,
                 generation = nextGeneration,
@@ -215,7 +253,7 @@ class SchoolAccountRepository internal constructor(
         }
     }
 
-    private fun clearLocked(): Boolean {
+    private suspend fun clearLocked(): Boolean {
         if (!initialized) {
             restoreLocked()
         }
@@ -226,6 +264,8 @@ class SchoolAccountRepository internal constructor(
             current.generation + 1L
         }
         return try {
+            _studentIdentity.value = null
+            notifyInvalidationListeners()
             directory.mkdirs()
             val credentialFile = File(directory, CREDENTIAL_FILE)
             if (credentialFile.exists() && !credentialFile.delete()) {
@@ -250,8 +290,10 @@ class SchoolAccountRepository internal constructor(
         }
     }
 
-    private fun enterRecoveryLocked(baseGeneration: Long) {
+    private suspend fun enterRecoveryLocked(baseGeneration: Long) {
         val nextGeneration = baseGeneration.coerceAtLeast(0L) + 1L
+        _studentIdentity.value = null
+        notifyInvalidationListeners()
         runCatching {
             directory.mkdirs()
             File(directory, CREDENTIAL_FILE).delete()
@@ -273,6 +315,12 @@ class SchoolAccountRepository internal constructor(
             status = AccountStatus.RECOVERY_REQUIRED,
             generation = nextGeneration,
         )
+    }
+
+    private suspend fun notifyInvalidationListeners() {
+        invalidationListeners.forEach { listener ->
+            runCatching { listener() }
+        }
     }
 
     private fun decryptPayloadOrNull(file: File): DecryptedPayload? {

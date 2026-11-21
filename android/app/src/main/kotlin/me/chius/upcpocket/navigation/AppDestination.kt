@@ -47,4 +47,7 @@ object AppRoute {
     const val SETTINGS = "settings"
     const val SCHOOL_ACCOUNT = "school_account"
     const val ABOUT = "about"
+    const val CARD_BALANCE = "card_balance"
+    const val POWER = "power"
+    const val FREE_CLASSROOM = "free_classroom"
 }

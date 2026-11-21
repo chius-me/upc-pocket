@@ -3,7 +3,6 @@ package me.chius.upcpocket.feature.home
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
@@ -11,14 +10,12 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.systemBars
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.rounded.AccountBalanceWallet
 import androidx.compose.material.icons.rounded.Bolt
 import androidx.compose.material.icons.rounded.CalendarToday
-import androidx.compose.material.icons.rounded.EventSeat
 import androidx.compose.material.icons.rounded.LocationOn
 import androidx.compose.material.icons.rounded.MeetingRoom
 import androidx.compose.material.icons.rounded.Person
@@ -47,17 +44,23 @@ import me.chius.upcpocket.core.designsystem.theme.GroupedCardPosition
 import me.chius.upcpocket.core.model.AccountStatus
 import me.chius.upcpocket.core.model.CampusPreference
 import me.chius.upcpocket.core.model.SchoolAccountState
+import me.chius.upcpocket.feature.card.CardBalanceUiState
+import me.chius.upcpocket.feature.power.PowerUiState
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(
     campus: CampusPreference,
     accountState: SchoolAccountState,
+    cardState: CardBalanceUiState,
+    powerState: PowerUiState,
     bottomNavPadding: Dp,
     onOpenSettings: () -> Unit,
     onOpenSchoolAccount: () -> Unit,
     onOpenTimetableTab: () -> Unit,
-    onOpenServicesTab: () -> Unit,
+    onOpenCardBalance: () -> Unit,
+    onOpenPower: () -> Unit,
+    onOpenFreeClassroom: () -> Unit,
 ) {
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
 
@@ -121,7 +124,7 @@ fun HomeScreen(
                         }
                     }
                     ExpressiveStatusBadge(
-                        text = "M0 纯原生骨架",
+                        text = "M1a 核心只读",
                         containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
                         contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -163,7 +166,7 @@ fun HomeScreen(
             item {
                 ExpressiveSectionHeader(
                     title = "今日概览",
-                    subtitle = "核心只读服务将在 M1 阶段逐项接入",
+                    subtitle = "点击卡片直达对应原生查询页",
                     modifier = Modifier.padding(bottom = 6.dp),
                 )
             }
@@ -172,17 +175,17 @@ fun HomeScreen(
                 ExpressiveListRow(
                     title = "今日课表",
                     subtitle = if (accountState.status == AccountStatus.SAVED_UNVERIFIED) {
-                        "将在 M1 接入正常 CAS 登录与离线周缓存"
+                        "将在 M1b 接入正常 CAS 登录与离线周缓存"
                     } else {
                         "配置学校账号后可同步周日–周六课表"
                     },
                     leadingIcon = Icons.Rounded.CalendarToday,
                     position = GroupedCardPosition.TOP,
                     trailingContent = {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Rounded.KeyboardArrowRight,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        ExpressiveStatusBadge(
+                            text = "M1b",
+                            containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                            contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     },
                     onClick = onOpenTimetableTab,
@@ -190,40 +193,67 @@ fun HomeScreen(
             }
 
             item {
+                val snap = cardState.snapshot
+                val cardSubtitle = when {
+                    snap != null -> "本机缓存总额 ¥${snap.totalBalanceText}（卡内 ¥${snap.balanceText} + 过渡 ¥${snap.transitionText}）"
+                    accountState.status == AccountStatus.SAVED_UNVERIFIED && accountState.isValidStudentId ->
+                        "已识别本人学号，点击查询校园卡余额"
+                    accountState.status == AccountStatus.SAVED_UNVERIFIED ->
+                        "当前登录名不符合学号规则，仅接受本人有效学号"
+                    else -> "未配置账号；仅接受本人有效学号查询"
+                }
                 ExpressiveListRow(
                     title = "校园卡余额",
-                    subtitle = when {
-                        accountState.status == AccountStatus.SAVED_UNVERIFIED && accountState.isValidStudentId ->
-                            "已识别有效本人学号，M1 只读查询仅发送学号"
-                        accountState.status == AccountStatus.SAVED_UNVERIFIED ->
-                            "当前登录名不符合学号规则，将跳过余额查询"
-                        else -> "未配置账号；仅接受本人有效学号查询"
-                    },
+                    subtitle = cardSubtitle,
                     leadingIcon = Icons.Rounded.AccountBalanceWallet,
                     position = GroupedCardPosition.MIDDLE,
                     trailingContent = {
-                        ExpressiveStatusBadge(
-                            text = "M1",
-                            containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
-                            contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
+                        if (snap != null) {
+                            ExpressiveStatusBadge(
+                                text = "¥${snap.totalBalanceText}",
+                                containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                                contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                            )
+                        } else {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Rounded.KeyboardArrowRight,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
                     },
-                    onClick = onOpenServicesTab,
+                    onClick = onOpenCardBalance,
                 )
             }
 
             item {
-                val powerHint = when (campus) {
-                    CampusPreference.GUZHENKOU -> "古镇口电费通过官方 HTTPS 页面访问"
-                    CampusPreference.TANGDAOWAN -> "唐岛湾电量支持楼号与寝室号原生查询（M1）"
-                    CampusPreference.ALL -> "唐岛湾支持原生查询，古镇口支持官方页面"
+                val powerReading = powerState.lastReading
+                val powerHint = when {
+                    powerReading != null -> "${powerReading.building} ${powerReading.room} · 剩余电量 ${powerReading.kwhText} 度"
+                    campus == CampusPreference.GUZHENKOU -> "古镇口电费通过官方 HTTPS 页面访问"
+                    else -> "点击查询唐岛湾宿舍剩余电量或打开古镇口页面"
                 }
                 ExpressiveListRow(
                     title = "宿舍电量",
                     subtitle = powerHint,
                     leadingIcon = Icons.Rounded.Bolt,
                     position = GroupedCardPosition.BOTTOM,
-                    onClick = onOpenServicesTab,
+                    trailingContent = {
+                        if (powerReading != null) {
+                            ExpressiveStatusBadge(
+                                text = "${powerReading.kwhText} 度",
+                                containerColor = MaterialTheme.colorScheme.tertiaryContainer,
+                                contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
+                            )
+                        } else {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Rounded.KeyboardArrowRight,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    },
+                    onClick = onOpenPower,
                     modifier = Modifier.padding(bottom = 18.dp),
                 )
             }
@@ -237,8 +267,8 @@ fun HomeScreen(
 
             item {
                 ExpressiveListRow(
-                    title = "空闲教室与图书馆座位",
-                    subtitle = "空闲教室（M1）· 图书馆三入口只读（M2）",
+                    title = "空闲教室",
+                    subtitle = "两校区教学楼与 1–13 节交集空闲实时查询",
                     leadingIcon = Icons.Rounded.MeetingRoom,
                     leadingContainerColor = MaterialTheme.colorScheme.secondaryContainer,
                     leadingContentColor = MaterialTheme.colorScheme.onSecondaryContainer,
@@ -250,7 +280,7 @@ fun HomeScreen(
                             tint = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     },
-                    onClick = onOpenServicesTab,
+                    onClick = onOpenFreeClassroom,
                 )
             }
 

@@ -24,8 +24,11 @@ import androidx.navigation.compose.rememberNavController
 import kotlinx.coroutines.launch
 import me.chius.upcpocket.AppContainer
 import me.chius.upcpocket.feature.account.SchoolAccountScreen
+import me.chius.upcpocket.feature.card.CardBalanceScreen
+import me.chius.upcpocket.feature.classroom.FreeClassroomScreen
 import me.chius.upcpocket.feature.focus.FocusScreen
 import me.chius.upcpocket.feature.home.HomeScreen
+import me.chius.upcpocket.feature.power.PowerScreen
 import me.chius.upcpocket.feature.services.ServicesScreen
 import me.chius.upcpocket.feature.settings.AboutScreen
 import me.chius.upcpocket.feature.settings.SettingsScreen
@@ -41,6 +44,8 @@ fun UpcPocketNavHost(
 
     val preferences by container.preferencesRepository.state.collectAsStateWithLifecycle()
     val accountState by container.schoolAccountRepository.state.collectAsStateWithLifecycle()
+    val cardState by container.cardBalanceRepository.uiState.collectAsStateWithLifecycle()
+    val powerState by container.powerRepository.uiState.collectAsStateWithLifecycle()
     val focusState by container.focusTimerController.state.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
 
@@ -103,11 +108,15 @@ fun UpcPocketNavHost(
                 HomeScreen(
                     campus = preferences.campus,
                     accountState = accountState,
+                    cardState = cardState,
+                    powerState = powerState,
                     bottomNavPadding = bottomNavPadding,
                     onOpenSettings = { navController.navigate(AppRoute.SETTINGS) },
                     onOpenSchoolAccount = { navController.navigate(AppRoute.SCHOOL_ACCOUNT) },
                     onOpenTimetableTab = { navigateToTopLevel(TopLevelDestination.TIMETABLE) },
-                    onOpenServicesTab = { navigateToTopLevel(TopLevelDestination.SERVICES) },
+                    onOpenCardBalance = { navController.navigate(AppRoute.CARD_BALANCE) },
+                    onOpenPower = { navController.navigate(AppRoute.POWER) },
+                    onOpenFreeClassroom = { navController.navigate(AppRoute.FREE_CLASSROOM) },
                 )
             }
 
@@ -126,6 +135,9 @@ fun UpcPocketNavHost(
                     onSelectCampus = { campus ->
                         scope.launch { container.preferencesRepository.setCampus(campus) }
                     },
+                    onOpenCardBalance = { navController.navigate(AppRoute.CARD_BALANCE) },
+                    onOpenPower = { navController.navigate(AppRoute.POWER) },
+                    onOpenFreeClassroom = { navController.navigate(AppRoute.FREE_CLASSROOM) },
                 )
             }
 
@@ -136,6 +148,46 @@ fun UpcPocketNavHost(
                     onSelectMode = container.focusTimerController::selectMode,
                     onToggleStartPause = container.focusTimerController::toggleStartPause,
                     onReset = container.focusTimerController::reset,
+                )
+            }
+
+            composable(AppRoute.CARD_BALANCE) {
+                CardBalanceScreen(
+                    accountState = accountState,
+                    uiState = cardState,
+                    onBack = { navController.popBackStack() },
+                    onOpenSchoolAccount = { navController.navigate(AppRoute.SCHOOL_ACCOUNT) },
+                    onRefresh = {
+                        scope.launch { container.cardBalanceRepository.refresh() }
+                    },
+                    onClearCache = {
+                        scope.launch { container.cardBalanceRepository.clearCache() }
+                    },
+                )
+            }
+
+            composable(AppRoute.POWER) {
+                PowerScreen(
+                    preferredCampus = preferences.campus,
+                    uiState = powerState,
+                    onBack = { navController.popBackStack() },
+                    onLoadBuildings = {
+                        scope.launch { container.powerRepository.loadBuildings() }
+                    },
+                    onQuery = { building, room ->
+                        scope.launch { container.powerRepository.query(building, room) }
+                    },
+                    onClearSaved = {
+                        scope.launch { container.powerRepository.clearSaved() }
+                    },
+                )
+            }
+
+            composable(AppRoute.FREE_CLASSROOM) {
+                FreeClassroomScreen(
+                    preferredCampus = preferences.campus,
+                    repository = container.freeClassroomRepository,
+                    onBack = { navController.popBackStack() },
                 )
             }
 

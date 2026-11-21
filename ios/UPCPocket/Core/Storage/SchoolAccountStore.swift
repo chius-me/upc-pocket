@@ -29,7 +29,15 @@ actor SchoolAccountStore {
     private let decoder = JSONDecoder()
 
     private var currentState = SchoolAccountState()
+    private var currentIdentity: SchoolStudentIdentity?
     private var initialized = false
+
+    func currentStudentIdentitySnapshot() async -> SchoolStudentIdentity? {
+        if !initialized {
+            _ = await restore()
+        }
+        return currentIdentity
+    }
 
     init(
         directoryURL: URL? = nil,
@@ -44,6 +52,7 @@ actor SchoolAccountStore {
     func restore() async -> SchoolAccountState {
         initialized = true
         guard let metadataURL = await resolveMetadataURL() else {
+            currentIdentity = nil
             currentState = SchoolAccountState(status: .unset, generation: 0)
             return currentState
         }
@@ -55,6 +64,7 @@ actor SchoolAccountStore {
             if credentialData != nil {
                 await enterRecovery(baseGeneration: 0, metadataURL: metadataURL)
             } else {
+                currentIdentity = nil
                 currentState = SchoolAccountState(status: .unset, generation: 0)
             }
             return currentState
@@ -71,6 +81,7 @@ actor SchoolAccountStore {
             if credentialData != nil {
                 try? await credentialStore.delete(accountKey: Self.credentialAccountKey)
             }
+            currentIdentity = nil
             currentState = SchoolAccountState(status: .unset, generation: metadata.generation)
             return currentState
 
@@ -78,6 +89,7 @@ actor SchoolAccountStore {
             if credentialData != nil {
                 try? await credentialStore.delete(accountKey: Self.credentialAccountKey)
             }
+            currentIdentity = nil
             currentState = SchoolAccountState(
                 status: .recoveryRequired,
                 generation: metadata.generation
@@ -99,12 +111,18 @@ actor SchoolAccountStore {
                 await enterRecovery(baseGeneration: metadata.generation, metadataURL: metadataURL)
                 return currentState
             }
+            let validStudentId = StudentIdValidator.isValid(payload.loginName)
+            currentIdentity = validStudentId ? SchoolStudentIdentity(
+                accountId: computedAccountId,
+                studentId: payload.loginName,
+                generation: payload.generation
+            ) : nil
             currentState = SchoolAccountState(
                 status: .savedUnverified,
                 generation: payload.generation,
                 accountId: computedAccountId,
                 maskedLoginName: maskLoginName(payload.loginName),
-                isValidStudentId: StudentIdValidator.isValid(payload.loginName),
+                isValidStudentId: validStudentId,
                 savedAtEpochMillis: payload.savedAtEpochMillis
             )
             return currentState
@@ -174,6 +192,11 @@ actor SchoolAccountStore {
             return (.failure(.storageFailed), currentState)
         }
 
+        currentIdentity = validStudentId ? SchoolStudentIdentity(
+            accountId: accountId,
+            studentId: loginName,
+            generation: nextGeneration
+        ) : nil
         currentState = SchoolAccountState(
             status: .savedUnverified,
             generation: nextGeneration,
@@ -213,6 +236,7 @@ actor SchoolAccountStore {
             let data = try encoder.encode(metadata)
             try data.write(to: metadataURL, options: .atomic)
             try? await LocalStorageExclusion.shared.excludeFromBackup(url: metadataURL)
+            currentIdentity = nil
             currentState = SchoolAccountState(status: .unset, generation: nextGeneration)
             return (true, currentState)
         } catch {
@@ -235,6 +259,7 @@ actor SchoolAccountStore {
             try? data.write(to: metadataURL, options: .atomic)
             try? await LocalStorageExclusion.shared.excludeFromBackup(url: metadataURL)
         }
+        currentIdentity = nil
         currentState = SchoolAccountState(status: .recoveryRequired, generation: nextGeneration)
     }
 

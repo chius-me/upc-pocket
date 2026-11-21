@@ -1,5 +1,11 @@
 import SwiftUI
 
+private enum ServicesDestination: Hashable {
+    case cardBalance
+    case power
+    case freeClassroom
+}
+
 struct ServicesView: View {
     @Bindable var environment: AppEnvironment
 
@@ -29,7 +35,17 @@ struct ServicesView: View {
 
                 Section("校园基础查询") {
                     ForEach(filteredQueries) { item in
-                        if let externalURL = item.externalURL {
+                        if let destination = destinationFor(item.id) {
+                            NavigationLink(value: destination) {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(item.title)
+                                        .foregroundStyle(.primary)
+                                    Text(item.subtitle)
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                        } else if let externalURL = item.externalURL {
                             Link(destination: externalURL) {
                                 serviceRow(
                                     title: item.title,
@@ -85,6 +101,25 @@ struct ServicesView: View {
             }
             .listStyle(.insetGrouped)
             .navigationTitle("服务")
+            .navigationDestination(for: ServicesDestination.self) { destination in
+                switch destination {
+                case .cardBalance:
+                    CardBalanceView(environment: environment)
+                case .power:
+                    PowerView(environment: environment)
+                case .freeClassroom:
+                    FreeClassroomView(environment: environment)
+                }
+            }
+        }
+    }
+
+    private func destinationFor(_ id: String) -> ServicesDestination? {
+        switch id {
+        case "free_classroom": .freeClassroom
+        case "electricity_tangdaowan": .power
+        case "campus_card_balance": .cardBalance
+        default: nil
         }
     }
 

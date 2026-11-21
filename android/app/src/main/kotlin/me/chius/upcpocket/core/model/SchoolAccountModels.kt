@@ -30,6 +30,16 @@ enum class AccountStatus(val label: String) {
     RECOVERY_REQUIRED("需要重新保存"),
 }
 
+data class SchoolStudentIdentity(
+    val accountId: String,
+    val studentId: String,
+    val generation: Long,
+) {
+    init {
+        require(StudentIdValidator.isValid(studentId)) { "Invalid studentId format" }
+    }
+}
+
 data class SchoolAccountState(
     val status: AccountStatus = AccountStatus.UNSET,
     val generation: Long = 0L,

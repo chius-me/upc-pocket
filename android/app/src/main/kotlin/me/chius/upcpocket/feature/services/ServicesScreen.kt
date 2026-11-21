@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.rounded.OpenInNew
 import androidx.compose.material.icons.rounded.AccountBalance
 import androidx.compose.material.icons.rounded.AccountBalanceWallet
@@ -52,6 +53,9 @@ fun ServicesScreen(
     campus: CampusPreference,
     bottomNavPadding: Dp,
     onSelectCampus: (CampusPreference) -> Unit,
+    onOpenCardBalance: () -> Unit,
+    onOpenPower: () -> Unit,
+    onOpenFreeClassroom: () -> Unit,
 ) {
     val context = LocalContext.current
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
@@ -115,7 +119,7 @@ fun ServicesScreen(
             item {
                 ExpressiveSectionHeader(
                     title = "校园基础查询",
-                    subtitle = "按常用校区优先显示，核心只读协议自 M1 起陆续上线",
+                    subtitle = "按常用校区优先显示，M1a 三项核心只读已可直接使用",
                     modifier = Modifier.padding(bottom = 6.dp),
                 )
             }
@@ -125,27 +129,44 @@ fun ServicesScreen(
                 key = { _, item -> item.id },
             ) { index, item ->
                 val isLast = index == filteredQueries.lastIndex
+                val clickHandler: (() -> Unit)? = when (item.id) {
+                    "free_classroom" -> onOpenFreeClassroom
+                    "electricity_tangdaowan" -> onOpenPower
+                    "campus_card_balance" -> onOpenCardBalance
+                    else -> item.externalUrl?.let { url -> { openExternalUrl(url) } }
+                }
+
                 ExpressiveListRow(
                     title = item.title,
                     subtitle = item.subtitle,
                     leadingIcon = serviceIconForId(item.id),
                     position = GroupedCardPosition.forIndex(index, filteredQueries.size),
                     trailingContent = {
-                        if (item.externalUrl != null) {
-                            Icon(
-                                imageVector = Icons.AutoMirrored.Rounded.OpenInNew,
-                                contentDescription = "外部打开",
-                                tint = MaterialTheme.colorScheme.primary,
-                            )
-                        } else {
-                            ExpressiveStatusBadge(
-                                text = item.milestone,
-                                containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
-                                contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
+                        when {
+                            item.externalUrl != null -> {
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Rounded.OpenInNew,
+                                    contentDescription = "外部打开",
+                                    tint = MaterialTheme.colorScheme.primary,
+                                )
+                            }
+                            clickHandler != null -> {
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Rounded.KeyboardArrowRight,
+                                    contentDescription = "进入",
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                            else -> {
+                                ExpressiveStatusBadge(
+                                    text = item.milestone,
+                                    containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                                    contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
                         }
                     },
-                    onClick = item.externalUrl?.let { url -> { openExternalUrl(url) } },
+                    onClick = clickHandler,
                     modifier = if (isLast) Modifier.padding(bottom = 18.dp) else Modifier,
                 )
             }

@@ -4,6 +4,9 @@ enum HomeDestination: Hashable {
     case settings
     case schoolAccount
     case about
+    case cardBalance
+    case power
+    case freeClassroom
 }
 
 struct HomeView: View {
@@ -28,7 +31,7 @@ struct HomeView: View {
                             .buttonStyle(.plain)
                             .upcGlassCapsule(tint: UPCTheme.brandBlue.opacity(0.14), interactive: true)
 
-                            Text("M0 原生骨架")
+                            Text("M1a 核心只读")
                                 .font(.caption.weight(.medium))
                                 .foregroundStyle(.secondary)
                                 .padding(.horizontal, 10)
@@ -87,7 +90,7 @@ struct HomeView: View {
                                 Text("今日课表")
                                     .foregroundStyle(.primary)
                                 Text(environment.accountState.status == .savedUnverified
-                                     ? "M1 将接入正常 CAS 登录与离线周缓存"
+                                     ? "M1b 将接入正常 CAS 登录与离线周缓存"
                                      : "配置学校账号后可同步周日–周六课表")
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
@@ -99,36 +102,71 @@ struct HomeView: View {
                     }
 
                     Button {
-                        selectedTab = .services
+                        path.append(.cardBalance)
                     } label: {
-                        Label {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("校园卡余额")
-                                    .foregroundStyle(.primary)
-                                Text(cardSubtitle)
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
+                        HStack {
+                            Label {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("校园卡余额")
+                                        .foregroundStyle(.primary)
+                                    Text(cardSubtitle)
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                            } icon: {
+                                Image(systemName: "creditcard")
+                                    .foregroundStyle(UPCTheme.campusJade)
                             }
-                        } icon: {
-                            Image(systemName: "creditcard")
-                                .foregroundStyle(UPCTheme.campusJade)
+                            Spacer()
+                            if let snap = environment.cardBalanceState.snapshot {
+                                Text("¥\(snap.totalBalanceText)")
+                                    .font(.subheadline.weight(.semibold))
+                                    .monospacedDigit()
+                                    .foregroundStyle(UPCTheme.campusJade)
+                            }
                         }
                     }
 
                     Button {
-                        selectedTab = .services
+                        path.append(.power)
+                    } label: {
+                        HStack {
+                            Label {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("宿舍电量")
+                                        .foregroundStyle(.primary)
+                                    Text(powerSubtitle)
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                            } icon: {
+                                Image(systemName: "bolt.fill")
+                                    .foregroundStyle(UPCTheme.noticeAmber)
+                            }
+                            Spacer()
+                            if let reading = environment.powerState.lastReading {
+                                Text("\(reading.kwhText) 度")
+                                    .font(.subheadline.weight(.semibold))
+                                    .monospacedDigit()
+                                    .foregroundStyle(UPCTheme.noticeAmber)
+                            }
+                        }
+                    }
+
+                    Button {
+                        path.append(.freeClassroom)
                     } label: {
                         Label {
                             VStack(alignment: .leading, spacing: 2) {
-                                Text("宿舍电量")
+                                Text("空闲教室")
                                     .foregroundStyle(.primary)
-                                Text(powerSubtitle)
+                                Text("两校区教学楼与 1–13 节交集空闲实时查询")
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
                             }
                         } icon: {
-                            Image(systemName: "bolt.fill")
-                                .foregroundStyle(UPCTheme.noticeAmber)
+                            Image(systemName: "building.2")
+                                .foregroundStyle(UPCTheme.brandBlue)
                         }
                     }
                 }
@@ -167,6 +205,12 @@ struct HomeView: View {
                     SchoolAccountView(environment: environment)
                 case .about:
                     AboutView()
+                case .cardBalance:
+                    CardBalanceView(environment: environment)
+                case .power:
+                    PowerView(environment: environment)
+                case .freeClassroom:
+                    FreeClassroomView(environment: environment)
                 }
             }
         }
@@ -192,21 +236,27 @@ struct HomeView: View {
     }
 
     private var cardSubtitle: String {
+        if let snap = environment.cardBalanceState.snapshot {
+            return "卡内 ¥\(snap.balanceText) + 过渡 ¥\(snap.transitionText)"
+        }
         switch environment.accountState.status {
         case .savedUnverified where environment.accountState.isValidStudentId:
-            "已识别有效本人学号，M1 只读查询仅发送学号"
+            return "已识别有效本人学号，点击查询校园卡余额"
         case .savedUnverified:
-            "当前登录名非标准学号，余额查询将跳过"
+            return "当前登录名非标准学号，余额查询将跳过"
         case .unset, .recoveryRequired:
-            "仅接受本人有效学号，不发送密码"
+            return "仅接受本人有效学号，不发送密码"
         }
     }
 
     private var powerSubtitle: String {
+        if let reading = environment.powerState.lastReading {
+            return "\(reading.building) · \(reading.room)"
+        }
         switch environment.preferences.campus {
-        case .tangdaowan: "唐岛湾楼号与寝室号原生查询（M1）"
-        case .guzhenkou: "古镇口电费使用官方 HTTPS 页面"
-        case .all: "唐岛湾原生查询（M1）· 古镇口官方页面"
+        case .tangdaowan: return "点击查询唐岛湾宿舍剩余电量"
+        case .guzhenkou: return "古镇口电费使用官方 HTTPS 页面"
+        case .all: return "唐岛湾原生查询 · 古镇口官方页面"
         }
     }
 }

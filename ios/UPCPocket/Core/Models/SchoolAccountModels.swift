@@ -42,6 +42,12 @@ enum AccountStatus: String, Codable, Sendable {
     }
 }
 
+struct SchoolStudentIdentity: Equatable, Sendable {
+    let accountId: String
+    let studentId: String
+    let generation: Int64
+}
+
 struct SchoolAccountState: Equatable, Sendable {
     var status: AccountStatus = .unset
     var generation: Int64 = 0
