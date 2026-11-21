@@ -34,6 +34,7 @@ import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Schedule
 import androidx.compose.material.icons.rounded.WarningAmber
 import androidx.compose.material3.Button
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -82,12 +83,17 @@ import me.chius.upcpocket.core.model.AccountStatus
 import me.chius.upcpocket.core.model.SchoolAccountState
 import me.chius.upcpocket.core.webview.ControlledSchoolWebViewDialog
 import me.chius.upcpocket.core.webview.ControlledWebViewContract
+import me.chius.upcpocket.feature.todo.TodoEditorBottomSheet
+import me.chius.upcpocket.feature.todo.TodoOrdering
+import me.chius.upcpocket.feature.todo.TodoUiState
+import me.chius.upcpocket.feature.todo.formatTodoTimestamp
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TimetableScreen(
     accountState: SchoolAccountState,
     uiState: TimetableUiState,
+    todoState: TodoUiState,
     bottomNavPadding: Dp,
     onOpenSchoolAccount: () -> Unit,
     onRefresh: () -> Unit,
@@ -95,10 +101,25 @@ fun TimetableScreen(
     onAdoptWebViewCookies: (Map<String, String>, ControlledWebViewContract.SessionContext) -> Unit,
     onDismissInteraction: () -> Unit,
     onClearCache: () -> Unit,
+    onOpenTodos: () -> Unit,
+    onToggleTodoCompleted: (String) -> Unit,
+    onUpsertTodo: (id: String?, title: String, dueAt: Long?, reminderAt: Long?) -> Unit,
 ) {
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
     var showWebViewDialog by remember { mutableStateOf(false) }
+    var showTodoEditor by remember { mutableStateOf(false) }
     var selectedMeeting by remember { mutableStateOf<CourseMeeting?>(null) }
+
+    if (showTodoEditor) {
+        TodoEditorBottomSheet(
+            initialTask = null,
+            onSave = { id, title, dueAt, reminderAt ->
+                onUpsertTodo(id, title, dueAt, reminderAt)
+                showTodoEditor = false
+            },
+            onDismiss = { showTodoEditor = false },
+        )
+    }
 
     val activeInteractionSession = uiState.interactionSession
     if (showWebViewDialog && activeInteractionSession != null &&
@@ -182,30 +203,100 @@ fun TimetableScreen(
             verticalArrangement = Arrangement.spacedBy(2.dp),
         ) {
             item {
-                ExpressiveSectionHeader(
-                    title = "今日日程待办",
-                    subtitle = "与课表共享同一视图，本机待办数据将在 M2 接入",
-                    modifier = Modifier.padding(bottom = 6.dp),
-                )
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 6.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    ExpressiveSectionHeader(
+                        title = "今日日程待办",
+                        subtitle = if (todoState.incompleteTasks.isEmpty()) {
+                            "本机存储，可设独立截止与一次性提醒"
+                        } else {
+                            "共 ${todoState.incompleteTasks.size} 项未完成，点击可管理"
+                        },
+                        modifier = Modifier.weight(1f),
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        TextButton(onClick = { showTodoEditor = true }) {
+                            Text("新建")
+                        }
+                        TextButton(onClick = onOpenTodos) {
+                            Text("全部")
+                        }
+                    }
+                }
             }
 
             item {
-                ExpressiveListRow(
-                    title = "今日暂无本机待办",
-                    subtitle = "M2 将接入本地 Room 待办、截止日期与一次性系统提醒",
-                    leadingIcon = Icons.Rounded.CheckCircleOutline,
-                    leadingContainerColor = MaterialTheme.colorScheme.secondaryContainer,
-                    leadingContentColor = MaterialTheme.colorScheme.onSecondaryContainer,
-                    position = GroupedCardPosition.SINGLE,
-                    trailingContent = {
-                        ExpressiveStatusBadge(
-                            text = "M2",
-                            containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
-                            contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    },
-                    modifier = Modifier.padding(bottom = 18.dp),
-                )
+                if (todoState.todayScheduleTasks.isEmpty()) {
+                    ExpressiveListRow(
+                        title = "今日暂无未完成待办",
+                        subtitle = "点击右上角「新建」添加本机待办与独立提醒",
+                        leadingIcon = Icons.Rounded.CheckCircleOutline,
+                        leadingContainerColor = MaterialTheme.colorScheme.secondaryContainer,
+                        leadingContentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                        position = GroupedCardPosition.SINGLE,
+                        onClick = onOpenTodos,
+                        modifier = Modifier.padding(bottom = 18.dp),
+                    )
+                } else {
+                    ExpressiveGroupedCard(
+                        position = GroupedCardPosition.SINGLE,
+                        onClick = onOpenTodos,
+                        modifier = Modifier.padding(bottom = 18.dp),
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 8.dp, vertical = 6.dp),
+                            verticalArrangement = Arrangement.spacedBy(2.dp),
+                        ) {
+                            val now = System.currentTimeMillis()
+                            todoState.todayScheduleTasks.forEach { task ->
+                                val urgent = TodoOrdering.isOverdueOrToday(task, now)
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Checkbox(
+                                        checked = task.completed,
+                                        onCheckedChange = { onToggleTodoCompleted(task.id) },
+                                    )
+                                    Column(
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .padding(end = 8.dp),
+                                    ) {
+                                        Text(
+                                            text = task.title,
+                                            style = MaterialTheme.typography.bodyLarge,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                        )
+                                        val meta = buildList {
+                                            task.dueAt?.let { add("截止 ${formatTodoTimestamp(it)}") }
+                                            task.reminderAt?.let { add("提醒 ${formatTodoTimestamp(it)}") }
+                                        }.joinToString(" · ")
+                                        if (meta.isNotEmpty()) {
+                                            Text(
+                                                text = meta,
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = if (urgent) {
+                                                    MaterialTheme.colorScheme.error
+                                                } else {
+                                                    MaterialTheme.colorScheme.onSurfaceVariant
+                                                },
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
             }
 
             item {

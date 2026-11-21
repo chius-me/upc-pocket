@@ -3,26 +3,67 @@ import SwiftUI
 struct TimetableView: View {
     @Bindable var environment: AppEnvironment
     @State private var showWebViewSheet = false
+    @State private var showTodoEditor = false
     @State private var selectedMeeting: CourseMeeting?
 
     private var state: TimetableUiState { environment.timetableState }
+    private var todoState: TodoUiState { environment.todoState }
 
     var body: some View {
         NavigationStack {
             List {
-                Section("今日日程待办") {
-                    Label {
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text("今日暂无本机待办")
-                                .font(.headline)
-                            Text("M2 起将在课表顶部同步展示本机待办与截止提醒")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
+                Section {
+                    if todoState.todayScheduleTasks.isEmpty {
+                        Label {
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text("今日暂无未完成待办")
+                                    .font(.headline)
+                                Text("可设置独立截止时间与一次性系统提醒")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        } icon: {
+                            Image(systemName: "checklist")
+                                .foregroundStyle(UPCTheme.campusJade)
                         }
-                    } icon: {
-                        Image(systemName: "checklist")
-                            .foregroundStyle(UPCTheme.campusJade)
+                    } else {
+                        let nowMillis = Int64(Date().timeIntervalSince1970 * 1000)
+                        ForEach(todoState.todayScheduleTasks) { task in
+                            let urgent = TodoOrdering.isOverdueOrToday(task, nowMillis: nowMillis)
+                            HStack(spacing: 10) {
+                                Button {
+                                    Task { await environment.toggleTodoCompleted(task.id) }
+                                } label: {
+                                    Image(systemName: task.completed ? "checkmark.circle.fill" : "circle")
+                                        .foregroundStyle(task.completed ? UPCTheme.campusJade : .secondary)
+                                }
+                                .buttonStyle(.plain)
+
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(task.title)
+                                        .lineLimit(1)
+                                    if let due = task.dueAt {
+                                        Text("截止 \(TodoView.formatMillis(due))")
+                                            .font(.caption2)
+                                            .foregroundStyle(urgent ? Color.red : .secondary)
+                                    }
+                                }
+                            }
+                        }
                     }
+
+                    HStack {
+                        Button("新建待办") {
+                            showTodoEditor = true
+                        }
+                        Spacer()
+                        NavigationLink("全部（\(todoState.incompleteTasks.count)）") {
+                            TodoView(environment: environment)
+                        }
+                        .fixedSize()
+                    }
+                } header: {
+                    Text("今日日程待办")
                 }
 
                 if environment.accountState.status != .savedUnverified {
@@ -226,6 +267,9 @@ struct TimetableView: View {
             }
             .sheet(item: $selectedMeeting) { meeting in
                 CourseDetailSheet(meeting: meeting)
+            }
+            .sheet(isPresented: $showTodoEditor) {
+                TodoEditorSheet(environment: environment, initialTask: nil)
             }
         }
     }

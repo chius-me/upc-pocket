@@ -14,6 +14,7 @@ import me.chius.upcpocket.feature.classroom.FreeClassroomRepository
 import me.chius.upcpocket.feature.focus.FocusTimerController
 import me.chius.upcpocket.feature.power.PowerRepository
 import me.chius.upcpocket.feature.timetable.TimetableRepository
+import me.chius.upcpocket.feature.todo.TodoRepository
 
 class AppContainer(context: Context) {
     private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -30,7 +31,8 @@ class AppContainer(context: Context) {
         context = context,
         schoolAccountRepository = schoolAccountRepository,
     )
-    val focusTimerController = FocusTimerController()
+    val todoRepository = TodoRepository(context)
+    val focusTimerController = FocusTimerController(context)
 
     init {
         schoolAccountRepository.addInvalidationListener { reason ->
@@ -44,6 +46,8 @@ class AppContainer(context: Context) {
             cardBalanceRepository.restore()
             powerRepository.restore()
             timetableRepository.restore()
+            todoRepository.restore()
+            focusTimerController.restore()
         }
     }
 }

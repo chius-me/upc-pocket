@@ -16,6 +16,7 @@ import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.rounded.AccountBalanceWallet
 import androidx.compose.material.icons.rounded.Bolt
 import androidx.compose.material.icons.rounded.CalendarToday
+import androidx.compose.material.icons.rounded.CheckCircleOutline
 import androidx.compose.material.icons.rounded.LocationOn
 import androidx.compose.material.icons.rounded.MeetingRoom
 import androidx.compose.material.icons.rounded.Person
@@ -48,6 +49,8 @@ import me.chius.upcpocket.feature.card.CardBalanceUiState
 import me.chius.upcpocket.feature.power.PowerUiState
 import me.chius.upcpocket.feature.timetable.TimetableConnectionStatus
 import me.chius.upcpocket.feature.timetable.TimetableUiState
+import me.chius.upcpocket.feature.todo.TodoUiState
+import me.chius.upcpocket.feature.todo.formatTodoTimestamp
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -57,10 +60,12 @@ fun HomeScreen(
     cardState: CardBalanceUiState,
     powerState: PowerUiState,
     timetableState: TimetableUiState,
+    todoState: TodoUiState,
     bottomNavPadding: Dp,
     onOpenSettings: () -> Unit,
     onOpenSchoolAccount: () -> Unit,
     onOpenTimetableTab: () -> Unit,
+    onOpenTodos: () -> Unit,
     onOpenCardBalance: () -> Unit,
     onOpenPower: () -> Unit,
     onOpenFreeClassroom: () -> Unit,
@@ -127,7 +132,7 @@ fun HomeScreen(
                         }
                     }
                     ExpressiveStatusBadge(
-                        text = "M1b 课表与认证",
+                        text = "M2a 日程与专注",
                         containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
                         contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -213,6 +218,38 @@ fun HomeScreen(
                         }
                     },
                     onClick = onOpenTimetableTab,
+                )
+            }
+
+            item {
+                val nextTodo = todoState.incompleteTasks.firstOrNull()
+                val todoSubtitle = if (nextTodo == null) {
+                    "暂无待办事项，点击新建本机待办或提醒"
+                } else {
+                    val dueSuffix = nextTodo.dueAt?.let { " · 截止 ${formatTodoTimestamp(it)}" }.orEmpty()
+                    "下一项：${nextTodo.title}$dueSuffix"
+                }
+                ExpressiveListRow(
+                    title = "本机待办",
+                    subtitle = todoSubtitle,
+                    leadingIcon = Icons.Rounded.CheckCircleOutline,
+                    position = GroupedCardPosition.MIDDLE,
+                    trailingContent = {
+                        if (todoState.incompleteTasks.isNotEmpty()) {
+                            ExpressiveStatusBadge(
+                                text = "${todoState.incompleteTasks.size} 项",
+                                containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                                contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                            )
+                        } else {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Rounded.KeyboardArrowRight,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    },
+                    onClick = onOpenTodos,
                 )
             }
 

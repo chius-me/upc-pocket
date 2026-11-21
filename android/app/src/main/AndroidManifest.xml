@@ -2,6 +2,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <!--
         校园官方网页通过系统浏览器打开，Android 11+ 需显式声明可查询的 Intent。
@@ -43,6 +44,10 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <receiver
+            android:name=".feature.todo.TodoAlarmReceiver"
+            android:exported="false" />
     </application>
 
 </manifest>

@@ -4,6 +4,7 @@ enum HomeDestination: Hashable {
     case settings
     case schoolAccount
     case about
+    case todos
     case cardBalance
     case power
     case freeClassroom
@@ -31,7 +32,7 @@ struct HomeView: View {
                             .buttonStyle(.plain)
                             .upcGlassCapsule(tint: UPCTheme.brandBlue.opacity(0.14), interactive: true)
 
-                            Text("M1b 课表与认证")
+                            Text("M2a 日程与专注")
                                 .font(.caption.weight(.medium))
                                 .foregroundStyle(.secondary)
                                 .padding(.horizontal, 10)
@@ -104,6 +105,32 @@ struct HomeView: View {
                                     .font(.subheadline.weight(.semibold))
                                     .monospacedDigit()
                                     .foregroundStyle(UPCTheme.brandBlue)
+                            }
+                        }
+                    }
+
+                    Button {
+                        path.append(.todos)
+                    } label: {
+                        HStack {
+                            Label {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("本机待办")
+                                        .foregroundStyle(.primary)
+                                    Text(todoSubtitle)
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                            } icon: {
+                                Image(systemName: "checklist")
+                                    .foregroundStyle(UPCTheme.campusJade)
+                            }
+                            Spacer()
+                            if !environment.todoState.incompleteTasks.isEmpty {
+                                Text("\(environment.todoState.incompleteTasks.count) 项")
+                                    .font(.subheadline.weight(.semibold))
+                                    .monospacedDigit()
+                                    .foregroundStyle(UPCTheme.campusJade)
                             }
                         }
                     }
@@ -212,6 +239,8 @@ struct HomeView: View {
                     SchoolAccountView(environment: environment)
                 case .about:
                     AboutView()
+                case .todos:
+                    TodoView(environment: environment)
                 case .cardBalance:
                     CardBalanceView(environment: environment)
                 case .power:
@@ -240,6 +269,14 @@ struct HomeView: View {
         case .recoveryRequired:
             "本机加密状态异常，请点击重新保存"
         }
+    }
+
+    private var todoSubtitle: String {
+        guard let first = environment.todoState.incompleteTasks.first else {
+            return "暂无待办事项，点击新建本机待办或提醒"
+        }
+        let dueSuffix = first.dueAt.map { " · 截止 \(TodoView.formatMillis($0))" } ?? ""
+        return "下一项：\(first.title)\(dueSuffix)"
     }
 
     private var cardSubtitle: String {

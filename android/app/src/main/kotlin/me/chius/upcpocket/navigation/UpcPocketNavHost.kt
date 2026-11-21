@@ -33,6 +33,7 @@ import me.chius.upcpocket.feature.services.ServicesScreen
 import me.chius.upcpocket.feature.settings.AboutScreen
 import me.chius.upcpocket.feature.settings.SettingsScreen
 import me.chius.upcpocket.feature.timetable.TimetableScreen
+import me.chius.upcpocket.feature.todo.TodoScreen
 
 @Composable
 fun UpcPocketNavHost(
@@ -47,6 +48,7 @@ fun UpcPocketNavHost(
     val cardState by container.cardBalanceRepository.uiState.collectAsStateWithLifecycle()
     val powerState by container.powerRepository.uiState.collectAsStateWithLifecycle()
     val timetableState by container.timetableRepository.uiState.collectAsStateWithLifecycle()
+    val todoState by container.todoRepository.uiState.collectAsStateWithLifecycle()
     val focusState by container.focusTimerController.state.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
 
@@ -112,10 +114,12 @@ fun UpcPocketNavHost(
                     cardState = cardState,
                     powerState = powerState,
                     timetableState = timetableState,
+                    todoState = todoState,
                     bottomNavPadding = bottomNavPadding,
                     onOpenSettings = { navController.navigate(AppRoute.SETTINGS) },
                     onOpenSchoolAccount = { navController.navigate(AppRoute.SCHOOL_ACCOUNT) },
                     onOpenTimetableTab = { navigateToTopLevel(TopLevelDestination.TIMETABLE) },
+                    onOpenTodos = { navController.navigate(AppRoute.TODOS) },
                     onOpenCardBalance = { navController.navigate(AppRoute.CARD_BALANCE) },
                     onOpenPower = { navController.navigate(AppRoute.POWER) },
                     onOpenFreeClassroom = { navController.navigate(AppRoute.FREE_CLASSROOM) },
@@ -126,6 +130,7 @@ fun UpcPocketNavHost(
                 TimetableScreen(
                     accountState = accountState,
                     uiState = timetableState,
+                    todoState = todoState,
                     bottomNavPadding = bottomNavPadding,
                     onOpenSchoolAccount = { navController.navigate(AppRoute.SCHOOL_ACCOUNT) },
                     onRefresh = {
@@ -142,6 +147,15 @@ fun UpcPocketNavHost(
                     onDismissInteraction = container.timetableRepository::dismissInteractionPrompt,
                     onClearCache = {
                         scope.launch { container.timetableRepository.clearLocalCache() }
+                    },
+                    onOpenTodos = { navController.navigate(AppRoute.TODOS) },
+                    onToggleTodoCompleted = { id ->
+                        scope.launch { container.todoRepository.toggleCompleted(id) }
+                    },
+                    onUpsertTodo = { id, title, dueAt, reminderAt ->
+                        scope.launch {
+                            container.todoRepository.upsertTask(id, title, dueAt, reminderAt)
+                        }
                     },
                 )
             }
@@ -163,9 +177,42 @@ fun UpcPocketNavHost(
                 FocusScreen(
                     uiState = focusState,
                     bottomNavPadding = bottomNavPadding,
-                    onSelectMode = container.focusTimerController::selectMode,
-                    onToggleStartPause = container.focusTimerController::toggleStartPause,
-                    onReset = container.focusTimerController::reset,
+                    onSelectMode = { mode ->
+                        scope.launch { container.focusTimerController.selectMode(mode) }
+                    },
+                    onToggleStartPause = {
+                        scope.launch { container.focusTimerController.toggleStartPause() }
+                    },
+                    onReset = {
+                        scope.launch { container.focusTimerController.reset() }
+                    },
+                    onFinishEarly = {
+                        scope.launch { container.focusTimerController.finishEarly() }
+                    },
+                    onClearHistory = {
+                        scope.launch { container.focusTimerController.clearHistory() }
+                    },
+                )
+            }
+
+            composable(AppRoute.TODOS) {
+                TodoScreen(
+                    uiState = todoState,
+                    onBack = { navController.popBackStack() },
+                    onUpsertTask = { id, title, dueAt, reminderAt ->
+                        scope.launch {
+                            container.todoRepository.upsertTask(id, title, dueAt, reminderAt)
+                        }
+                    },
+                    onToggleCompleted = { id ->
+                        scope.launch { container.todoRepository.toggleCompleted(id) }
+                    },
+                    onDeleteTask = { id ->
+                        scope.launch { container.todoRepository.deleteTask(id) }
+                    },
+                    onClearCompleted = {
+                        scope.launch { container.todoRepository.clearCompleted() }
+                    },
                 )
             }
 

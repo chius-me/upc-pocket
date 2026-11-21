@@ -1,30 +1,6 @@
 import Foundation
 import Observation
 
-enum FocusMode: String, CaseIterable, Identifiable, Sendable {
-    case focus25
-    case shortBreak5
-    case deep45
-
-    var id: String { rawValue }
-
-    var label: String {
-        switch self {
-        case .focus25: "专注 25 分钟"
-        case .shortBreak5: "短休 5 分钟"
-        case .deep45: "深度 45 分钟"
-        }
-    }
-
-    var durationSeconds: Int {
-        switch self {
-        case .focus25: 25 * 60
-        case .shortBreak5: 5 * 60
-        case .deep45: 45 * 60
-        }
-    }
-}
-
 @Observable
 @MainActor
 final class AppEnvironment {
@@ -32,6 +8,8 @@ final class AppEnvironment {
     private let accountStore: SchoolAccountStore
     private(set) var cardBalanceStore: CardBalanceStore!
     private(set) var timetableStore: TimetableStore!
+    let todoStore: TodoStore
+    let focusStore: FocusStore
     let powerStore: PowerStore
     let freeClassroomService: FreeClassroomService
 
@@ -40,23 +18,24 @@ final class AppEnvironment {
     private(set) var cardBalanceState = CardBalanceUiState()
     private(set) var powerState = PowerUiState()
     private(set) var timetableState = TimetableUiState()
+    private(set) var todoState = TodoUiState()
+    private(set) var focusState = FocusUiState()
     private(set) var isLoaded = false
-
-    private(set) var focusMode: FocusMode = .focus25
-    private(set) var remainingSeconds: Int = FocusMode.focus25.durationSeconds
-    private(set) var isFocusRunning = false
-    private(set) var completedFocusSessions = 0
 
     private var timerTask: Task<Void, Never>?
 
     init(
         preferencesStore: PreferencesStore = PreferencesStore(),
         accountStore: SchoolAccountStore = SchoolAccountStore(),
+        todoStore: TodoStore = TodoStore(),
+        focusStore: FocusStore = FocusStore(),
         powerStore: PowerStore = PowerStore(),
         freeClassroomService: FreeClassroomService = FreeClassroomService()
     ) {
         self.preferencesStore = preferencesStore
         self.accountStore = accountStore
+        self.todoStore = todoStore
+        self.focusStore = focusStore
         self.powerStore = powerStore
         self.freeClassroomService = freeClassroomService
         self.cardBalanceStore = CardBalanceStore(
@@ -77,28 +56,22 @@ final class AppEnvironment {
         )
     }
 
-    var focusProgress: Double {
-        guard focusMode.durationSeconds > 0 else { return 0 }
-        return Double(remainingSeconds) / Double(focusMode.durationSeconds)
-    }
-
-    var formattedFocusTime: String {
-        let minutes = remainingSeconds / 60
-        let seconds = remainingSeconds % 60
-        return String(format: "%02d:%02d", minutes, seconds)
-    }
-
     func bootstrap() async {
         await LocalStorageExclusion.shared.applyDefaultExclusions()
         async let loadedPrefs = preferencesStore.load()
         async let restoredAccount = accountStore.restore()
         async let restoredPower = powerStore.restore()
+        async let restoredTodos = todoStore.restore()
+        async let restoredFocus = focusStore.restore()
         preferences = await loadedPrefs
         accountState = await restoredAccount
         powerState = await restoredPower
+        todoState = await restoredTodos
+        focusState = await restoredFocus
         cardBalanceState = await cardBalanceStore.restore()
         timetableState = await timetableStore.restore()
         isLoaded = true
+        syncFocusTicker()
     }
 
     func updateCampus(_ campus: CampusPreference) {
@@ -207,55 +180,77 @@ final class AppEnvironment {
         powerState = await powerStore.clearSaved()
     }
 
-    func selectFocusMode(_ mode: FocusMode) {
+    func upsertTodo(id: String?, title: String, dueAt: Int64?, reminderAt: Int64?) async {
+        let (_, updated) = await todoStore.upsertTask(
+            id: id,
+            rawTitle: title,
+            dueAt: dueAt,
+            reminderAt: reminderAt
+        )
+        todoState = updated
+    }
+
+    func toggleTodoCompleted(_ id: String) async {
+        todoState = await todoStore.toggleCompleted(taskId: id)
+    }
+
+    func deleteTodo(_ id: String) async {
+        todoState = await todoStore.deleteTask(taskId: id)
+    }
+
+    func clearCompletedTodos() async {
+        todoState = await todoStore.clearCompleted()
+    }
+
+    func requestTodoNotificationPermissionIfNeeded() async -> Bool {
+        await todoStore.requestReminderPermissionIfNeeded()
+    }
+
+    func selectFocusMode(_ mode: FocusMode) async {
         timerTask?.cancel()
         timerTask = nil
-        focusMode = mode
-        remainingSeconds = mode.durationSeconds
-        isFocusRunning = false
+        focusState = await focusStore.selectMode(mode)
+        syncFocusTicker()
     }
 
-    func toggleFocusTimer() {
-        if isFocusRunning {
-            pauseFocusTimer()
-        } else {
-            startFocusTimer()
-        }
+    func toggleFocusTimer() async {
+        focusState = await focusStore.toggleStartPause()
+        syncFocusTicker()
     }
 
-    func resetFocusTimer() {
+    func resetFocusTimer() async {
         timerTask?.cancel()
         timerTask = nil
-        remainingSeconds = focusMode.durationSeconds
-        isFocusRunning = false
+        focusState = await focusStore.reset()
     }
 
-    private func startFocusTimer() {
-        guard timerTask == nil else { return }
-        if remainingSeconds <= 0 {
-            remainingSeconds = focusMode.durationSeconds
-        }
-        isFocusRunning = true
-        timerTask = Task { [weak self] in
-            while let self, !Task.isCancelled {
-                try? await Task.sleep(for: .seconds(1))
-                guard !Task.isCancelled, self.isFocusRunning else { break }
-                if self.remainingSeconds <= 1 {
-                    self.remainingSeconds = 0
-                    self.isFocusRunning = false
-                    self.completedFocusSessions += 1
-                    self.timerTask = nil
-                    break
-                } else {
-                    self.remainingSeconds -= 1
+    func finishFocusEarly() async {
+        timerTask?.cancel()
+        timerTask = nil
+        focusState = await focusStore.finishEarly()
+    }
+
+    func clearFocusHistory() async {
+        focusState = await focusStore.clearHistory()
+    }
+
+    private func syncFocusTicker() {
+        if focusState.isRunning {
+            guard timerTask == nil else { return }
+            timerTask = Task { [weak self] in
+                while let self, !Task.isCancelled {
+                    try? await Task.sleep(for: .seconds(1))
+                    guard !Task.isCancelled else { break }
+                    self.focusState = await self.focusStore.tick()
+                    if !self.focusState.isRunning {
+                        self.timerTask = nil
+                        break
+                    }
                 }
             }
+        } else {
+            timerTask?.cancel()
+            timerTask = nil
         }
-    }
-
-    private func pauseFocusTimer() {
-        timerTask?.cancel()
-        timerTask = nil
-        isFocusRunning = false
     }
 }
