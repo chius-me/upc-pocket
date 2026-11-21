@@ -31,7 +31,7 @@ struct HomeView: View {
                             .buttonStyle(.plain)
                             .upcGlassCapsule(tint: UPCTheme.brandBlue.opacity(0.14), interactive: true)
 
-                            Text("M1a 核心只读")
+                            Text("M1b 课表与认证")
                                 .font(.caption.weight(.medium))
                                 .foregroundStyle(.secondary)
                                 .padding(.horizontal, 10)
@@ -85,19 +85,26 @@ struct HomeView: View {
                     Button {
                         selectedTab = .timetable
                     } label: {
-                        Label {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("今日课表")
-                                    .foregroundStyle(.primary)
-                                Text(environment.accountState.status == .savedUnverified
-                                     ? "M1b 将接入正常 CAS 登录与离线周缓存"
-                                     : "配置学校账号后可同步周日–周六课表")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
+                        HStack {
+                            Label {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("今日课表")
+                                        .foregroundStyle(.primary)
+                                    Text(timetableSubtitle)
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                            } icon: {
+                                Image(systemName: "calendar")
+                                    .foregroundStyle(UPCTheme.brandBlue)
                             }
-                        } icon: {
-                            Image(systemName: "calendar")
-                                .foregroundStyle(UPCTheme.brandBlue)
+                            Spacer()
+                            if let todaySummary = environment.timetableState.todaySummary {
+                                Text("\(todaySummary.courses.count) 节")
+                                    .font(.subheadline.weight(.semibold))
+                                    .monospacedDigit()
+                                    .foregroundStyle(UPCTheme.brandBlue)
+                            }
                         }
                     }
 
@@ -246,6 +253,29 @@ struct HomeView: View {
             return "当前登录名非标准学号，余额查询将跳过"
         case .unset, .recoveryRequired:
             return "仅接受本人有效学号，不发送密码"
+        }
+    }
+
+    private var timetableSubtitle: String {
+        guard environment.accountState.status == .savedUnverified else {
+            return "配置学校账号后可同步周日–周六课表"
+        }
+        if let today = environment.timetableState.todaySummary {
+            if today.courses.isEmpty {
+                let weekText = today.weekNumber.map(String.init) ?? "-"
+                return "第 \(weekText) 周 · 今日暂无排课\(today.isOfflineCache ? "（缓存）" : "")"
+            }
+            let first = today.courses[0]
+            let loc = first.location.map { " @ \($0)" } ?? ""
+            return "今日 \(today.courses.count) 节课 · 首节 \(first.courseName)\(loc)"
+        }
+        switch environment.timetableState.connectionStatus {
+        case .interactionRequired:
+            return "需要前往课表页通过安全验证后同步"
+        case .invalidCredentials:
+            return "学校账号或密码错误，请核对后重试"
+        default:
+            return "点击前往课表同步当前教学周"
         }
     }
 

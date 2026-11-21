@@ -8,10 +8,12 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import me.chius.upcpocket.core.data.AppPreferencesRepository
 import me.chius.upcpocket.core.data.SchoolAccountRepository
+import me.chius.upcpocket.core.model.AccountInvalidationReason
 import me.chius.upcpocket.feature.card.CardBalanceRepository
 import me.chius.upcpocket.feature.classroom.FreeClassroomRepository
 import me.chius.upcpocket.feature.focus.FocusTimerController
 import me.chius.upcpocket.feature.power.PowerRepository
+import me.chius.upcpocket.feature.timetable.TimetableRepository
 
 class AppContainer(context: Context) {
     private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -24,16 +26,24 @@ class AppContainer(context: Context) {
     )
     val powerRepository = PowerRepository(context)
     val freeClassroomRepository = FreeClassroomRepository()
+    val timetableRepository = TimetableRepository(
+        context = context,
+        schoolAccountRepository = schoolAccountRepository,
+    )
     val focusTimerController = FocusTimerController()
 
     init {
-        schoolAccountRepository.addInvalidationListener {
-            cardBalanceRepository.clearForAccountChange()
+        schoolAccountRepository.addInvalidationListener { reason ->
+            if (reason == AccountInvalidationReason.ACCOUNT_CHANGED_OR_CLEARED) {
+                cardBalanceRepository.clearForAccountChange()
+            }
+            timetableRepository.onAccountInvalidated(reason)
         }
         appScope.launch {
             schoolAccountRepository.restore()
             cardBalanceRepository.restore()
             powerRepository.restore()
+            timetableRepository.restore()
         }
     }
 }

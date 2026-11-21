@@ -57,6 +57,22 @@ struct SchoolAccountState: Equatable, Sendable {
     var savedAtEpochMillis: Int64? = nil
 }
 
+enum AccountInvalidationReason: Sendable {
+    case accountChangedOrCleared
+    case credentialsUpdated
+}
+
+struct SchoolLoginCredential: Sendable, CustomStringConvertible {
+    let accountId: String
+    let generation: Int64
+    let loginName: String
+    let password: String
+
+    var description: String {
+        "SchoolLoginCredential(accountId: \(accountId), generation: \(generation), password: [REDACTED])"
+    }
+}
+
 enum AccountWriteFailure: Error, Equatable, Sendable {
     case invalidLoginName
     case invalidPassword

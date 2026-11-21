@@ -58,6 +58,40 @@ class ControlledWebViewContractTest {
             Decision.BLOCK,
             ControlledWebViewContract.inspectNavigation("https://cas.upc.edu.cn:8443/cas/login"),
         )
+        assertEquals(
+            Decision.ALLOW,
+            ControlledWebViewContract.inspectNavigation(
+                "https://cas.upc.edu.cn/cas/themes/upc/login-mobile.html",
+                method = "GET",
+                isMainFrame = false,
+                scopeHosts = ControlledWebViewContract.timetableScopeHosts,
+            ),
+        )
+        assertEquals(
+            Decision.BLOCK,
+            ControlledWebViewContract.inspectNavigation(
+                "https://cas.upc.edu.cn/cas/../admin",
+                scopeHosts = ControlledWebViewContract.timetableScopeHosts,
+            ),
+        )
+        assertEquals(
+            Decision.BLOCK,
+            ControlledWebViewContract.inspectNavigation(
+                "https://libspace.upc.edu.cn/",
+                scopeHosts = ControlledWebViewContract.timetableScopeHosts,
+            ),
+        )
+        assertEquals(
+            Decision.BLOCK,
+            ControlledWebViewContract.inspectEntryUrl("about:blank"),
+        )
+        assertEquals(
+            Decision.ALLOW,
+            ControlledWebViewContract.inspectEntryUrl(
+                "https://cas.upc.edu.cn/cas/login?service=https%3A%2F%2Fapp.upc.edu.cn",
+                scopeHosts = ControlledWebViewContract.timetableScopeHosts,
+            ),
+        )
     }
 
     @Test

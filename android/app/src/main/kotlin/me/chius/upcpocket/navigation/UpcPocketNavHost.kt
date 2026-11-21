@@ -46,6 +46,7 @@ fun UpcPocketNavHost(
     val accountState by container.schoolAccountRepository.state.collectAsStateWithLifecycle()
     val cardState by container.cardBalanceRepository.uiState.collectAsStateWithLifecycle()
     val powerState by container.powerRepository.uiState.collectAsStateWithLifecycle()
+    val timetableState by container.timetableRepository.uiState.collectAsStateWithLifecycle()
     val focusState by container.focusTimerController.state.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
 
@@ -110,6 +111,7 @@ fun UpcPocketNavHost(
                     accountState = accountState,
                     cardState = cardState,
                     powerState = powerState,
+                    timetableState = timetableState,
                     bottomNavPadding = bottomNavPadding,
                     onOpenSettings = { navController.navigate(AppRoute.SETTINGS) },
                     onOpenSchoolAccount = { navController.navigate(AppRoute.SCHOOL_ACCOUNT) },
@@ -123,8 +125,24 @@ fun UpcPocketNavHost(
             composable(TopLevelDestination.TIMETABLE.route) {
                 TimetableScreen(
                     accountState = accountState,
+                    uiState = timetableState,
                     bottomNavPadding = bottomNavPadding,
                     onOpenSchoolAccount = { navController.navigate(AppRoute.SCHOOL_ACCOUNT) },
+                    onRefresh = {
+                        scope.launch { container.timetableRepository.refresh() }
+                    },
+                    onSelectWeek = { term, week ->
+                        scope.launch { container.timetableRepository.selectWeek(term, week) }
+                    },
+                    onAdoptWebViewCookies = { cookies, context ->
+                        scope.launch {
+                            container.timetableRepository.adoptWebViewCookies(cookies, context)
+                        }
+                    },
+                    onDismissInteraction = container.timetableRepository::dismissInteractionPrompt,
+                    onClearCache = {
+                        scope.launch { container.timetableRepository.clearLocalCache() }
+                    },
                 )
             }
 

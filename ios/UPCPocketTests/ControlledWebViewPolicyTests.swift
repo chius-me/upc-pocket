@@ -48,6 +48,40 @@ final class ControlledWebViewPolicyTests: XCTestCase {
             ControlledWebViewPolicy.inspectNavigation(rawURL: "https://cas.upc.edu.cn:8443/cas/login"),
             .block
         )
+        XCTAssertEqual(
+            ControlledWebViewPolicy.inspectNavigation(
+                rawURL: "https://cas.upc.edu.cn/cas/themes/upc/login-mobile.html",
+                method: "GET",
+                isMainFrame: false,
+                scopeHosts: ControlledWebViewPolicy.timetableScopeHosts
+            ),
+            .allow
+        )
+        XCTAssertEqual(
+            ControlledWebViewPolicy.inspectNavigation(
+                rawURL: "https://cas.upc.edu.cn/cas/../admin",
+                scopeHosts: ControlledWebViewPolicy.timetableScopeHosts
+            ),
+            .block
+        )
+        XCTAssertEqual(
+            ControlledWebViewPolicy.inspectNavigation(
+                rawURL: "https://libspace.upc.edu.cn/",
+                scopeHosts: ControlledWebViewPolicy.timetableScopeHosts
+            ),
+            .block
+        )
+        XCTAssertEqual(
+            ControlledWebViewPolicy.inspectEntryURL(rawURL: "about:blank"),
+            .block
+        )
+        XCTAssertEqual(
+            ControlledWebViewPolicy.inspectEntryURL(
+                rawURL: "https://cas.upc.edu.cn/cas/login?service=https%3A%2F%2Fapp.upc.edu.cn",
+                scopeHosts: ControlledWebViewPolicy.timetableScopeHosts
+            ),
+            .allow
+        )
     }
 
     func testSessionContextInvalidatesWhenGenerationChanges() {

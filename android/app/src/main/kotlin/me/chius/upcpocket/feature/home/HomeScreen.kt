@@ -46,6 +46,8 @@ import me.chius.upcpocket.core.model.CampusPreference
 import me.chius.upcpocket.core.model.SchoolAccountState
 import me.chius.upcpocket.feature.card.CardBalanceUiState
 import me.chius.upcpocket.feature.power.PowerUiState
+import me.chius.upcpocket.feature.timetable.TimetableConnectionStatus
+import me.chius.upcpocket.feature.timetable.TimetableUiState
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -54,6 +56,7 @@ fun HomeScreen(
     accountState: SchoolAccountState,
     cardState: CardBalanceUiState,
     powerState: PowerUiState,
+    timetableState: TimetableUiState,
     bottomNavPadding: Dp,
     onOpenSettings: () -> Unit,
     onOpenSchoolAccount: () -> Unit,
@@ -124,7 +127,7 @@ fun HomeScreen(
                         }
                     }
                     ExpressiveStatusBadge(
-                        text = "M1a 核心只读",
+                        text = "M1b 课表与认证",
                         containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
                         contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -172,21 +175,42 @@ fun HomeScreen(
             }
 
             item {
+                val todaySummary = timetableState.todaySummary
+                val timetableSubtitle = when {
+                    accountState.status != AccountStatus.SAVED_UNVERIFIED ->
+                        "配置学校账号后可同步周日–周六课表"
+                    todaySummary != null && todaySummary.courses.isEmpty() ->
+                        "第 ${todaySummary.weekNumber ?: "-"} 周 · 今日暂无排课${if (todaySummary.isOfflineCache) "（缓存）" else ""}"
+                    todaySummary != null -> {
+                        val first = todaySummary.courses.first()
+                        val loc = first.location?.let { " @ $it" }.orEmpty()
+                        "今日 ${todaySummary.courses.size} 节课 · 首节 ${first.courseName}$loc"
+                    }
+                    timetableState.connectionStatus == TimetableConnectionStatus.INTERACTION_REQUIRED ->
+                        "需要前往课表页通过安全验证后同步"
+                    timetableState.connectionStatus == TimetableConnectionStatus.INVALID_CREDENTIALS ->
+                        "学校账号或密码错误，请核对后重试"
+                    else -> "点击前往课表同步当前教学周"
+                }
                 ExpressiveListRow(
                     title = "今日课表",
-                    subtitle = if (accountState.status == AccountStatus.SAVED_UNVERIFIED) {
-                        "将在 M1b 接入正常 CAS 登录与离线周缓存"
-                    } else {
-                        "配置学校账号后可同步周日–周六课表"
-                    },
+                    subtitle = timetableSubtitle,
                     leadingIcon = Icons.Rounded.CalendarToday,
                     position = GroupedCardPosition.TOP,
                     trailingContent = {
-                        ExpressiveStatusBadge(
-                            text = "M1b",
-                            containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
-                            contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
+                        if (todaySummary != null) {
+                            ExpressiveStatusBadge(
+                                text = "${todaySummary.courses.size} 节",
+                                containerColor = MaterialTheme.colorScheme.primaryContainer,
+                                contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                            )
+                        } else {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Rounded.KeyboardArrowRight,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
                     },
                     onClick = onOpenTimetableTab,
                 )

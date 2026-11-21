@@ -31,6 +31,7 @@ final class AppEnvironment {
     private let preferencesStore: PreferencesStore
     private let accountStore: SchoolAccountStore
     private(set) var cardBalanceStore: CardBalanceStore!
+    private(set) var timetableStore: TimetableStore!
     let powerStore: PowerStore
     let freeClassroomService: FreeClassroomService
 
@@ -38,6 +39,7 @@ final class AppEnvironment {
     private(set) var accountState = SchoolAccountState()
     private(set) var cardBalanceState = CardBalanceUiState()
     private(set) var powerState = PowerUiState()
+    private(set) var timetableState = TimetableUiState()
     private(set) var isLoaded = false
 
     private(set) var focusMode: FocusMode = .focus25
@@ -62,6 +64,17 @@ final class AppEnvironment {
                 await accountStore.currentStudentIdentitySnapshot()
             }
         )
+        self.timetableStore = TimetableStore(
+            accountStateProvider: { [accountStore] in
+                await accountStore.currentAccountStateSnapshot()
+            },
+            matchesAccountGeneration: { [accountStore] accountId, generation in
+                await accountStore.matches(accountId: accountId, generation: generation)
+            },
+            loginCredentialProvider: { [accountStore] in
+                await accountStore.currentLoginCredentialSnapshot()
+            }
+        )
     }
 
     var focusProgress: Double {
@@ -84,6 +97,7 @@ final class AppEnvironment {
         accountState = await restoredAccount
         powerState = await restoredPower
         cardBalanceState = await cardBalanceStore.restore()
+        timetableState = await timetableStore.restore()
         isLoaded = true
     }
 
@@ -107,10 +121,17 @@ final class AppEnvironment {
         let previousAccountId = accountState.accountId
         let (result, updatedState) = await accountStore.save(rawLoginName: loginName, password: password)
         accountState = updatedState
-        if case .success = result, previousAccountId != updatedState.accountId {
-            cardBalanceState = await cardBalanceStore.clearForAccountChange()
-        } else {
-            cardBalanceState = await cardBalanceStore.restore()
+        if case .success = result {
+            if previousAccountId != updatedState.accountId {
+                cardBalanceState = await cardBalanceStore.clearForAccountChange()
+                timetableState = await timetableStore.onAccountInvalidated(reason: .accountChangedOrCleared)
+            } else if previousAccountId != nil {
+                cardBalanceState = await cardBalanceStore.restore()
+                timetableState = await timetableStore.onAccountInvalidated(reason: .credentialsUpdated)
+            } else {
+                cardBalanceState = await cardBalanceStore.restore()
+                timetableState = await timetableStore.restore()
+            }
         }
         return result
     }
@@ -120,8 +141,40 @@ final class AppEnvironment {
         accountState = updatedState
         if ok {
             cardBalanceState = await cardBalanceStore.clearForAccountChange()
+            timetableState = await timetableStore.onAccountInvalidated(reason: .accountChangedOrCleared)
         }
         return ok
+    }
+
+    func refreshTimetable() async {
+        timetableState.isRefreshing = true
+        timetableState.errorMessage = nil
+        timetableState = await timetableStore.refresh()
+    }
+
+    func selectTimetableWeek(term: TimetableTermInfo, week: Int) async {
+        timetableState.selectedTerm = term
+        timetableState.selectedWeek = week
+        timetableState.isRefreshing = true
+        timetableState.errorMessage = nil
+        timetableState = await timetableStore.selectWeek(term: term, week: week)
+    }
+
+    func adoptTimetableWebViewCookies(
+        _ cookies: [String: String],
+        context: ControlledWebViewPolicy.SessionContext
+    ) async {
+        timetableState.isRefreshing = true
+        timetableState.errorMessage = nil
+        timetableState = await timetableStore.adoptWebViewCookies(cookies, sessionContext: context)
+    }
+
+    func dismissTimetableInteractionPrompt() async {
+        timetableState = await timetableStore.dismissInteractionPrompt()
+    }
+
+    func clearTimetableCache() async {
+        timetableState = await timetableStore.clearLocalCache()
     }
 
     func refreshCardBalance() async {

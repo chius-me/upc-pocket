@@ -49,6 +49,29 @@ data class SchoolAccountState(
     val savedAtEpochMillis: Long? = null,
 )
 
+enum class AccountInvalidationReason {
+    ACCOUNT_CHANGED_OR_CLEARED,
+    CREDENTIALS_UPDATED,
+}
+
+/**
+ * Ephemeral decrypted credential wrapper for internal auth execution only.
+ * Never pass to UI layers and always call [wipe] immediately after use.
+ */
+class SchoolLoginCredential(
+    val accountId: String,
+    val generation: Long,
+    val loginName: String,
+    val password: CharArray,
+) {
+    fun wipe() {
+        password.fill('\u0000')
+    }
+
+    override fun toString(): String =
+        "SchoolLoginCredential(accountId=$accountId, generation=$generation, password=[REDACTED])"
+}
+
 enum class AccountWriteFailure {
     INVALID_LOGIN_NAME,
     INVALID_PASSWORD,

@@ -20,10 +20,12 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import me.chius.upcpocket.core.model.AccountInvalidationReason
 import me.chius.upcpocket.core.model.AccountStatus
 import me.chius.upcpocket.core.model.AccountWriteFailure
 import me.chius.upcpocket.core.model.AccountWriteResult
 import me.chius.upcpocket.core.model.SchoolAccountState
+import me.chius.upcpocket.core.model.SchoolLoginCredential
 import me.chius.upcpocket.core.model.SchoolStudentIdentity
 import me.chius.upcpocket.core.model.StudentIdValidator
 import me.chius.upcpocket.core.model.maskLoginName
@@ -56,12 +58,54 @@ class SchoolAccountRepository internal constructor(
     private val _studentIdentity = MutableStateFlow<SchoolStudentIdentity?>(null)
     val studentIdentity: StateFlow<SchoolStudentIdentity?> = _studentIdentity.asStateFlow()
 
-    private val invalidationListeners = CopyOnWriteArrayList<suspend () -> Unit>()
+    private val invalidationListeners = CopyOnWriteArrayList<suspend (AccountInvalidationReason) -> Unit>()
 
     private var initialized = false
 
-    fun addInvalidationListener(listener: suspend () -> Unit) {
+    fun addInvalidationListener(listener: suspend (AccountInvalidationReason) -> Unit) {
         invalidationListeners.add(listener)
+    }
+
+    fun matchesAccountGeneration(accountId: String, generation: Long): Boolean {
+        val current = _state.value
+        return current.status == AccountStatus.SAVED_UNVERIFIED &&
+            current.accountId == accountId &&
+            current.generation == generation
+    }
+
+    /**
+     * Decrypts the saved credential under [mutex], copies the password into an ephemeral [CharArray],
+     * executes [block] outside [mutex] so network I/O does not block account operations, and always
+     * zeroes the password array on completion.
+     */
+    suspend fun <T> withLoginCredential(block: suspend (SchoolLoginCredential) -> T): T? {
+        val credential = withContext(ioDispatcher) {
+            mutex.withLock {
+                if (!initialized) {
+                    restoreLocked()
+                }
+                val current = _state.value
+                if (current.status != AccountStatus.SAVED_UNVERIFIED || current.accountId == null) {
+                    return@withLock null
+                }
+                val credentialFile = File(directory, CREDENTIAL_FILE)
+                if (!credentialFile.exists()) return@withLock null
+                val decrypted = decryptPayloadWithPasswordOrNull(credentialFile)
+                    ?: return@withLock null
+                val computedAccountId = stableAccountId(decrypted.loginName)
+                if (computedAccountId != current.accountId || decrypted.generation != current.generation) {
+                    decrypted.wipe()
+                    return@withLock null
+                }
+                decrypted
+            }
+        } ?: return null
+
+        return try {
+            block(credential)
+        } finally {
+            credential.wipe()
+        }
     }
 
     suspend fun restore() {
@@ -217,7 +261,7 @@ class SchoolAccountRepository internal constructor(
         return try {
             if (previousAccountId != null && previousAccountId != accountId) {
                 _studentIdentity.value = null
-                notifyInvalidationListeners()
+                notifyInvalidationListeners(AccountInvalidationReason.ACCOUNT_CHANGED_OR_CLEARED)
             }
             directory.mkdirs()
             writeAtomically(File(directory, CREDENTIAL_FILE), encryptedBytes)
@@ -247,6 +291,9 @@ class SchoolAccountRepository internal constructor(
                 isValidStudentId = validStudentId,
                 savedAtEpochMillis = savedAt,
             )
+            if (previousAccountId != null && previousAccountId == accountId) {
+                notifyInvalidationListeners(AccountInvalidationReason.CREDENTIALS_UPDATED)
+            }
             AccountWriteResult.Success
         } catch (_: Exception) {
             AccountWriteResult.Failure(AccountWriteFailure.STORAGE_FAILED)
@@ -265,7 +312,7 @@ class SchoolAccountRepository internal constructor(
         }
         return try {
             _studentIdentity.value = null
-            notifyInvalidationListeners()
+            notifyInvalidationListeners(AccountInvalidationReason.ACCOUNT_CHANGED_OR_CLEARED)
             directory.mkdirs()
             val credentialFile = File(directory, CREDENTIAL_FILE)
             if (credentialFile.exists() && !credentialFile.delete()) {
@@ -293,7 +340,7 @@ class SchoolAccountRepository internal constructor(
     private suspend fun enterRecoveryLocked(baseGeneration: Long) {
         val nextGeneration = baseGeneration.coerceAtLeast(0L) + 1L
         _studentIdentity.value = null
-        notifyInvalidationListeners()
+        notifyInvalidationListeners(AccountInvalidationReason.ACCOUNT_CHANGED_OR_CLEARED)
         runCatching {
             directory.mkdirs()
             File(directory, CREDENTIAL_FILE).delete()
@@ -317,9 +364,9 @@ class SchoolAccountRepository internal constructor(
         )
     }
 
-    private suspend fun notifyInvalidationListeners() {
+    private suspend fun notifyInvalidationListeners(reason: AccountInvalidationReason) {
         invalidationListeners.forEach { listener ->
-            runCatching { listener() }
+            runCatching { listener(reason) }
         }
     }
 
@@ -330,6 +377,21 @@ class SchoolAccountRepository internal constructor(
             val plainBytes = cipher.decrypt(cipherBytes)
             try {
                 decodePayload(plainBytes)
+            } finally {
+                plainBytes.fill(0)
+            }
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    private fun decryptPayloadWithPasswordOrNull(file: File): SchoolLoginCredential? {
+        return try {
+            val cipherBytes = file.readBytes()
+            if (cipherBytes.size > MAX_CREDENTIAL_FILE_BYTES) return null
+            val plainBytes = cipher.decrypt(cipherBytes)
+            try {
+                decodePayloadWithPassword(plainBytes)
             } finally {
                 plainBytes.fill(0)
             }
@@ -387,6 +449,47 @@ class SchoolAccountRepository internal constructor(
                 savedAtEpochMillis = savedAt,
                 loginName = loginName,
             )
+        }
+    }
+
+    private fun decodePayloadWithPassword(plainBytes: ByteArray): SchoolLoginCredential? {
+        DataInputStream(ByteArrayInputStream(plainBytes)).use { dis ->
+            if (dis.readInt() != PAYLOAD_MAGIC) return null
+            if (dis.readByte().toInt() != PAYLOAD_VERSION) return null
+            val generation = dis.readLong()
+            dis.readLong() // savedAtEpochMillis
+            val loginSize = dis.readInt()
+            if (loginSize <= 0 || loginSize > 1024) return null
+            val loginBytes = ByteArray(loginSize)
+            dis.readFully(loginBytes)
+            val passwordSize = dis.readInt()
+            if (passwordSize <= 0 || passwordSize > 4096) return null
+            val passwordBytes = ByteArray(passwordSize)
+            try {
+                dis.readFully(passwordBytes)
+                if (dis.available() != 0) return null
+                val loginName = String(loginBytes, StandardCharsets.UTF_8)
+                if (loginName.isBlank()) return null
+                val charBuffer = StandardCharsets.UTF_8.newDecoder()
+                    .decode(java.nio.ByteBuffer.wrap(passwordBytes))
+                val passwordChars = CharArray(charBuffer.remaining())
+                charBuffer.get(passwordChars)
+                if (charBuffer.hasArray()) {
+                    charBuffer.array().fill('\u0000')
+                }
+                if (passwordChars.isEmpty() || passwordChars.any { it == '\u0000' }) {
+                    passwordChars.fill('\u0000')
+                    return null
+                }
+                return SchoolLoginCredential(
+                    accountId = stableAccountId(loginName),
+                    generation = generation,
+                    loginName = loginName,
+                    password = passwordChars,
+                )
+            } finally {
+                passwordBytes.fill(0)
+            }
         }
     }
 

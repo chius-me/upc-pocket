@@ -1,14 +1,16 @@
 package me.chius.upcpocket.core.webview
 
 import java.net.URI
+import java.util.Locale
 import me.chius.upcpocket.core.model.SchoolAccountState
 
 /**
- * Single controlled WebView contract for future school captcha / secondary-challenge fallback.
+ * Single controlled WebView contract for school captcha / secondary-challenge fallback.
  * Enforces exact HTTPS host allowlist and binds each session to the active accountId + generation.
  */
 object ControlledWebViewContract {
     private const val MAX_URL_LENGTH = 16_384
+    private val COOKIE_NAME_REGEX = Regex("[!#$%&'*+\\-.^_`|~0-9A-Za-z]{1,256}")
 
     val allowedHttpsHosts: Set<String> = setOf(
         "cas.upc.edu.cn",
@@ -16,6 +18,11 @@ object ControlledWebViewContract {
         "libspace.upc.edu.cn",
         "mb-xyk.upc.edu.cn",
         "office.chaoxing.com",
+    )
+
+    val timetableScopeHosts: Set<String> = setOf(
+        "cas.upc.edu.cn",
+        "app.upc.edu.cn",
     )
 
     enum class Decision {
@@ -32,10 +39,24 @@ object ControlledWebViewContract {
             current.accountId == accountId && current.generation == generation
     }
 
+    fun inspectEntryUrl(
+        rawUrl: String,
+        scopeHosts: Set<String> = allowedHttpsHosts,
+    ): Decision {
+        if (rawUrl.equals("about:blank", ignoreCase = true)) return Decision.BLOCK
+        return inspectNavigation(
+            rawUrl = rawUrl,
+            method = "GET",
+            isMainFrame = true,
+            scopeHosts = scopeHosts,
+        )
+    }
+
     fun inspectNavigation(
         rawUrl: String,
         method: String = "GET",
         isMainFrame: Boolean = true,
+        scopeHosts: Set<String> = allowedHttpsHosts,
     ): Decision {
         if (rawUrl.isBlank() || rawUrl.length > MAX_URL_LENGTH) return Decision.BLOCK
         if (rawUrl.any { it <= '\u001f' || it == '\u007f' }) return Decision.BLOCK
@@ -43,23 +64,43 @@ object ControlledWebViewContract {
         val uri = runCatching { URI(rawUrl) }.getOrNull() ?: return Decision.BLOCK
         if (uri.isOpaque || uri.rawUserInfo != null) return Decision.BLOCK
 
-        val scheme = uri.scheme?.lowercase() ?: return Decision.BLOCK
+        val scheme = uri.scheme?.lowercase(Locale.ROOT) ?: return Decision.BLOCK
         if (scheme != "https") return Decision.BLOCK
 
-        val host = uri.host?.lowercase()?.takeIf { !it.endsWith('.') } ?: return Decision.BLOCK
-        if (host !in allowedHttpsHosts) return Decision.BLOCK
+        val host = uri.host?.lowercase(Locale.ROOT)?.takeIf { !it.endsWith('.') } ?: return Decision.BLOCK
+        if (host !in allowedHttpsHosts || host !in scopeHosts) return Decision.BLOCK
         if (uri.port !in setOf(-1, 443)) return Decision.BLOCK
 
-        val normalizedMethod = method.uppercase()
         val path = uri.rawPath.orEmpty()
+        if (path.contains("..") || path.contains('\\')) return Decision.BLOCK
+
+        val normalizedMethod = method.uppercase(Locale.ROOT)
+        if (normalizedMethod !in setOf("GET", "POST")) return Decision.BLOCK
+
         return when (host) {
             "cas.upc.edu.cn" -> {
-                val allowedCasLoginPost = path == "/cas/login" && normalizedMethod == "POST"
-                val allowedCasGet = normalizedMethod == "GET" &&
-                    (path == "/cas/login" || (!isMainFrame && path.startsWith("/cas/")))
-                if (allowedCasLoginPost || allowedCasGet) Decision.ALLOW else Decision.BLOCK
+                if (path.startsWith("/cas/")) Decision.ALLOW else Decision.BLOCK
             }
-            else -> if (normalizedMethod in setOf("GET", "POST")) Decision.ALLOW else Decision.BLOCK
+            else -> Decision.ALLOW
         }
+    }
+
+    fun parseCookieHeader(rawCookieHeader: String?): Map<String, String> {
+        if (rawCookieHeader.isNullOrBlank()) return emptyMap()
+        val result = linkedMapOf<String, String>()
+        rawCookieHeader.split(';').forEach { segment ->
+            val trimmed = segment.trim()
+            val eqIndex = trimmed.indexOf('=')
+            if (eqIndex <= 0) return@forEach
+            val name = trimmed.substring(0, eqIndex).trim()
+            val value = trimmed.substring(eqIndex + 1).trim()
+            if (COOKIE_NAME_REGEX.matches(name) &&
+                value.length <= 4096 &&
+                value.none { it <= '\u001f' || it == '\u007f' }
+            ) {
+                result[name] = value
+            }
+        }
+        return result
     }
 }

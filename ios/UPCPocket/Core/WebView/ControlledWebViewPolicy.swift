@@ -1,6 +1,6 @@
 import Foundation
 
-/// Single controlled WKWebView navigation contract for future school captcha / secondary-challenge fallback.
+/// Single controlled WKWebView navigation contract for school captcha / secondary-challenge fallback.
 enum ControlledWebViewPolicy: Sendable {
     private static let maxURLLength = 16_384
 
@@ -10,6 +10,11 @@ enum ControlledWebViewPolicy: Sendable {
         "libspace.upc.edu.cn",
         "mb-xyk.upc.edu.cn",
         "office.chaoxing.com"
+    ]
+
+    static let timetableScopeHosts: Set<String> = [
+        "cas.upc.edu.cn",
+        "app.upc.edu.cn"
     ]
 
     enum Decision: Equatable, Sendable {
@@ -27,10 +32,26 @@ enum ControlledWebViewPolicy: Sendable {
         }
     }
 
+    static func inspectEntryURL(
+        rawURL: String,
+        scopeHosts: Set<String> = allowedHTTPSHosts
+    ) -> Decision {
+        if rawURL.caseInsensitiveCompare("about:blank") == .orderedSame {
+            return .block
+        }
+        return inspectNavigation(
+            rawURL: rawURL,
+            method: "GET",
+            isMainFrame: true,
+            scopeHosts: scopeHosts
+        )
+    }
+
     static func inspectNavigation(
         rawURL: String,
         method: String = "GET",
-        isMainFrame: Bool = true
+        isMainFrame: Bool = true,
+        scopeHosts: Set<String> = allowedHTTPSHosts
     ) -> Decision {
         guard !rawURL.isEmpty, rawURL.count <= maxURLLength else {
             return .block
@@ -47,7 +68,8 @@ enum ControlledWebViewPolicy: Sendable {
               let host = components.host?.lowercased(),
               !host.isEmpty,
               !host.hasSuffix("."),
-              allowedHTTPSHosts.contains(host) else {
+              allowedHTTPSHosts.contains(host),
+              scopeHosts.contains(host) else {
             return .block
         }
 
@@ -55,16 +77,20 @@ enum ControlledWebViewPolicy: Sendable {
             return .block
         }
 
-        let normalizedMethod = method.uppercased()
         let path = components.percentEncodedPath
-
-        if host == "cas.upc.edu.cn" {
-            let allowedPost = path == "/cas/login" && normalizedMethod == "POST"
-            let allowedGet = normalizedMethod == "GET" &&
-                (path == "/cas/login" || (!isMainFrame && path.hasPrefix("/cas/")))
-            return (allowedPost || allowedGet) ? .allow : .block
+        if path.contains("..") || path.contains("\\") {
+            return .block
         }
 
-        return (normalizedMethod == "GET" || normalizedMethod == "POST") ? .allow : .block
+        let normalizedMethod = method.uppercased()
+        guard normalizedMethod == "GET" || normalizedMethod == "POST" else {
+            return .block
+        }
+
+        if host == "cas.upc.edu.cn" {
+            return path.hasPrefix("/cas/") ? .allow : .block
+        }
+
+        return .allow
     }
 }

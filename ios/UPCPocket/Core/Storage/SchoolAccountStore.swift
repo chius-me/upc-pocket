@@ -39,6 +39,42 @@ actor SchoolAccountStore {
         return currentIdentity
     }
 
+    func currentAccountStateSnapshot() async -> SchoolAccountState {
+        if !initialized {
+            _ = await restore()
+        }
+        return currentState
+    }
+
+    func currentLoginCredentialSnapshot() async -> SchoolLoginCredential? {
+        if !initialized {
+            _ = await restore()
+        }
+        guard currentState.status == .savedUnverified,
+              let expectedAccountId = currentState.accountId,
+              let credentialData = try? await credentialStore.load(accountKey: Self.credentialAccountKey),
+              let payload = try? decoder.decode(CredentialPayload.self, from: credentialData),
+              payload.version == 1,
+              payload.generation == currentState.generation,
+              !payload.loginName.isEmpty,
+              !payload.password.isEmpty,
+              Self.stableAccountId(for: payload.loginName) == expectedAccountId else {
+            return nil
+        }
+        return SchoolLoginCredential(
+            accountId: expectedAccountId,
+            generation: payload.generation,
+            loginName: payload.loginName,
+            password: payload.password
+        )
+    }
+
+    func matches(accountId: String, generation: Int64) -> Bool {
+        currentState.status == .savedUnverified &&
+            currentState.accountId == accountId &&
+            currentState.generation == generation
+    }
+
     init(
         directoryURL: URL? = nil,
         credentialStore: any CredentialBackingStore = KeychainCredentialStore(),
