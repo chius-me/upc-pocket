@@ -112,6 +112,14 @@ struct UpcCasService: Sendable {
     }
 }
 
+enum CasCallbackResult: Sendable {
+    case callback(URL)
+    case invalidCredentials
+    case interactionRequired(interactionURL: URL, reason: String)
+    case networkError(String)
+    case upstreamError(String)
+}
+
 enum CasLoginResult: Sendable, CustomStringConvertible {
     case success(targetCookies: [String: String], finalURL: URL)
     case invalidCredentials
@@ -177,11 +185,52 @@ struct UpcCasLogin: Sendable {
                 comps.fragment == nil
         }
     ) async -> CasLoginResult {
+        let jar = UpcCasCookieJar(allowedHosts: [service.casHost, service.callbackHost])
+        let callbackResult = await authenticateToCallback(credential: credential, casURL: casURL, jar: jar)
+        switch callbackResult {
+        case .invalidCredentials:
+            await jar.clear()
+            return .invalidCredentials
+        case let .interactionRequired(interactionURL, reason):
+            await jar.clear()
+            return .interactionRequired(interactionURL: interactionURL, reason: reason)
+        case let .networkError(msg):
+            await jar.clear()
+            return .networkError(msg)
+        case let .upstreamError(msg):
+            await jar.clear()
+            return .upstreamError(msg)
+        case let .callback(targetURL):
+            do {
+                return try await followCallbackHops(
+                    jar: jar,
+                    startURL: targetURL,
+                    isAllowedAppHop: isAllowedAppHop
+                )
+            } catch let error as StrictHTTPError {
+                await jar.clear()
+                switch error {
+                case let .transport(msg):
+                    return .networkError(msg)
+                case .redirectBlocked, .httpStatus, .responseTooLarge, .invalidEncoding:
+                    return .upstreamError(error.localizedDescription)
+                }
+            } catch {
+                await jar.clear()
+                return .networkError("无法连接学校认证服务，请检查网络后重试")
+            }
+        }
+    }
+
+    func authenticateToCallback(
+        credential: SchoolLoginCredential,
+        casURL: URL,
+        jar: UpcCasCookieJar
+    ) async -> CasCallbackResult {
         guard service.isCasLoginURL(casURL) else {
             return .upstreamError("CAS 登录入口参数校验未通过")
         }
 
-        let jar = UpcCasCookieJar(allowedHosts: [service.casHost, service.callbackHost])
         do {
             let getResponse = try await executeWithJar(
                 jar: jar,
@@ -251,11 +300,7 @@ struct UpcCasLogin: Sendable {
                         interactionURL: casURL
                     )
                 } else if service.isCallbackURL(targetURL) {
-                    return try await followCallbackHops(
-                        jar: jar,
-                        startURL: targetURL,
-                        isAllowedAppHop: isAllowedAppHop
-                    )
+                    return .callback(targetURL)
                 } else {
                     return .upstreamError("CAS 回调目标未通过域与参数白名单校验")
                 }
@@ -284,7 +329,6 @@ struct UpcCasLogin: Sendable {
                 reason: "需要完成交互式学校登录验证"
             )
         } catch let error as StrictHTTPError {
-            await jar.clear()
             switch error {
             case let .transport(msg):
                 return .networkError(msg)
@@ -292,7 +336,6 @@ struct UpcCasLogin: Sendable {
                 return .upstreamError(error.localizedDescription)
             }
         } catch {
-            await jar.clear()
             return .networkError("无法连接学校认证服务，请检查网络后重试")
         }
     }
@@ -301,7 +344,7 @@ struct UpcCasLogin: Sendable {
         jar: UpcCasCookieJar,
         targetURL: URL,
         interactionURL: URL
-    ) async throws -> CasLoginResult {
+    ) async throws -> CasCallbackResult {
         let response = try await executeWithJar(jar: jar, request: CasHTTPRequest(url: targetURL, method: "GET"))
         if response.statusCode == 429 {
             return .upstreamError("学校认证请求过于频繁，请稍后重试")

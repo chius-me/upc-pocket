@@ -49,12 +49,16 @@
 
 后续校园认证遇到图形验证码或二次验证时，双端各自只维护 **1 个** 通用受控 WebView 容器（Android `WebView` / iOS `WKWebView`）：
 
-- **严格 HTTPS 白名单**：仅允许精确主机且仅允许 `https`（443 默认端口），禁止 `http://`、userinfo（`user:pass@host`）、非标准端口与未知重定向域：
-  - `cas.upc.edu.cn`（仅 `/cas/login` 及 `/cas/` 子资源）
-  - `app.upc.edu.cn`
-  - `libspace.upc.edu.cn`
+- **严格 HTTPS 白名单**：仅允许精确主机且仅允许 `https`（443 默认端口），禁止 `http://`、userinfo（`user:pass@host`）、非标准端口与未知重定向域（均限定精确业务路径，禁止通配子域）：
+  - `cas.upc.edu.cn`（仅 `/cas/` 子路径）
+  - `app.upc.edu.cn`（课表/校内应用路径）
+  - `libspace.upc.edu.cn`（仅 `/remote/static/` 与 `/libseat` 路径）
   - `mb-xyk.upc.edu.cn`
-  - `office.chaoxing.com`（仅受限选座与认证流）
+  - `office.chaoxing.com`（仅 `/front/third/apps/seat/`、`/front/third/apps/seatengine/`、`/front/apps/seat/` 及 `/data/apps/seat*/`）
+  - 以下超星 SSO 中转域名仅限超星 WebView 作用域按精确路径临时放行：
+    - `tyrzfw.chaoxing.com`（仅 `/auth3/upc/cas/`）
+    - `passport2-api.chaoxing.com`（仅 `/api/v2/casreceive`）
+    - `i.chaoxing.com`（仅 `/`、`/base`、`/base/`）
 - **绑定上下文**：每次打开 WebView 绑定启动时的 `accountId` 与 `generation`；操作期间账号变化或删除立即销毁页面并丢弃会话。
 - **隔离浏览器环境**：不读取或导入系统浏览器、微信或第三方浏览器 Cookie；不读取或记录网页表单密码。
 

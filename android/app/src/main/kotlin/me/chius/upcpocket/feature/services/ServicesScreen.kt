@@ -56,6 +56,7 @@ fun ServicesScreen(
     onOpenCardBalance: () -> Unit,
     onOpenPower: () -> Unit,
     onOpenFreeClassroom: () -> Unit,
+    onOpenLibrarySeat: () -> Unit,
 ) {
     val context = LocalContext.current
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
@@ -119,7 +120,7 @@ fun ServicesScreen(
             item {
                 ExpressiveSectionHeader(
                     title = "校园基础查询",
-                    subtitle = "按常用校区优先显示，M1a 三项核心只读已可直接使用",
+                    subtitle = "按常用校区优先显示，M1/M2 只读服务已可直接使用",
                     modifier = Modifier.padding(bottom = 6.dp),
                 )
             }
@@ -133,6 +134,7 @@ fun ServicesScreen(
                     "free_classroom" -> onOpenFreeClassroom
                     "electricity_tangdaowan" -> onOpenPower
                     "campus_card_balance" -> onOpenCardBalance
+                    "library_seat" -> onOpenLibrarySeat
                     else -> item.externalUrl?.let { url -> { openExternalUrl(url) } }
                 }
 

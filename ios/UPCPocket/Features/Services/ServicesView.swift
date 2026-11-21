@@ -4,6 +4,7 @@ private enum ServicesDestination: Hashable {
     case cardBalance
     case power
     case freeClassroom
+    case librarySeat
 }
 
 struct ServicesView: View {
@@ -109,6 +110,8 @@ struct ServicesView: View {
                     PowerView(environment: environment)
                 case .freeClassroom:
                     FreeClassroomView(environment: environment)
+                case .librarySeat:
+                    LibrarySeatView(environment: environment)
                 }
             }
         }
@@ -119,6 +122,7 @@ struct ServicesView: View {
         case "free_classroom": .freeClassroom
         case "electricity_tangdaowan": .power
         case "campus_card_balance": .cardBalance
+        case "library_seat": .librarySeat
         default: nil
         }
     }

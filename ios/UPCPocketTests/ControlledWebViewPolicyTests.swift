@@ -72,6 +72,41 @@ final class ControlledWebViewPolicyTests: XCTestCase {
             .block
         )
         XCTAssertEqual(
+            ControlledWebViewPolicy.inspectNavigation(
+                rawURL: "https://libspace.upc.edu.cn/libseat/#/login?token=abc",
+                scopeHosts: ControlledWebViewPolicy.libraryScopeHosts
+            ),
+            .allow
+        )
+        XCTAssertEqual(
+            ControlledWebViewPolicy.inspectNavigation(
+                rawURL: "https://libspace.upc.edu.cn/admin",
+                scopeHosts: ControlledWebViewPolicy.libraryScopeHosts
+            ),
+            .block
+        )
+        XCTAssertEqual(
+            ControlledWebViewPolicy.inspectNavigation(
+                rawURL: "https://tyrzfw.chaoxing.com/auth3/upc/cas/init?refer=https%3A%2F%2Foffice.chaoxing.com",
+                scopeHosts: ControlledWebViewPolicy.chaoxingScopeHosts
+            ),
+            .allow
+        )
+        XCTAssertEqual(
+            ControlledWebViewPolicy.inspectNavigation(
+                rawURL: "https://passport2-api.chaoxing.com/api/v2/casreceive?thirdinfo=1&setmain=true",
+                scopeHosts: ControlledWebViewPolicy.chaoxingScopeHosts
+            ),
+            .allow
+        )
+        XCTAssertEqual(
+            ControlledWebViewPolicy.inspectNavigation(
+                rawURL: "https://office.chaoxing.com/front/third/apps/other/index",
+                scopeHosts: ControlledWebViewPolicy.chaoxingScopeHosts
+            ),
+            .block
+        )
+        XCTAssertEqual(
             ControlledWebViewPolicy.inspectEntryURL(rawURL: "about:blank"),
             .block
         )

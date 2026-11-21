@@ -25,9 +25,17 @@ class UpcCasCookieJar(
     ) {
         fun isExpired(now: Long): Boolean = expiresAtMillis != null && expiresAtMillis <= now
 
-        fun matches(host: String, requestPath: String, isHttps: Boolean, now: Long): Boolean {
+        fun matches(
+            host: String,
+            requestPath: String,
+            isHttps: Boolean,
+            now: Long,
+            allowedHosts: Set<String>,
+        ): Boolean {
             if (isExpired(now)) return false
-            if (domain != host) return false
+            val domainMatches = domain == host ||
+                (host.endsWith(".$domain") && domain in allowedHosts && host in allowedHosts)
+            if (!domainMatches) return false
             if (secure && !isHttps) return false
             if (path == "/") return true
             if (requestPath == path) return true
@@ -68,7 +76,8 @@ class UpcCasCookieJar(
         val now = nowMillis()
         entries.removeAll { it.isExpired(now) }
         return entries
-            .filter { it.matches(host, path, isHttps, now) }
+            .filter { it.matches(host, path, isHttps, now, allowedHosts) }
+            .sortedBy { if (it.domain == host) 0 else 1 }
             .joinToString("; ") { "${it.name}=${it.value}" }
             .takeIf { it.isNotEmpty() }
     }
@@ -79,6 +88,14 @@ class UpcCasCookieJar(
         val now = nowMillis()
         entries.removeAll { it.isExpired(now) }
         val result = linkedMapOf<String, String>()
+        entries.forEach { cookie ->
+            if (normalizedHost.endsWith(".${cookie.domain}") &&
+                cookie.domain in allowedHosts &&
+                normalizedHost in allowedHosts
+            ) {
+                result[cookie.name] = cookie.value
+            }
+        }
         entries.forEach { cookie ->
             if (cookie.domain == normalizedHost) {
                 result[cookie.name] = cookie.value

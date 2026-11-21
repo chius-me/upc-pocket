@@ -73,8 +73,11 @@ fun ControlledSchoolWebViewDialog(
     completionPathPrefixes: Set<String>,
     onCookiesCaptured: (Map<String, String>) -> Unit,
     onDismiss: () -> Unit,
+    onCompletionUrlCaptured: ((String) -> Unit)? = null,
+    allowCompletionWithoutCookies: Boolean = false,
 ) {
     val latestOnCookiesCaptured by rememberUpdatedState(onCookiesCaptured)
+    val latestOnCompletionUrlCaptured by rememberUpdatedState(onCompletionUrlCaptured)
     val latestOnDismiss by rememberUpdatedState(onDismiss)
 
     var isLoading by remember { mutableStateOf(true) }
@@ -211,6 +214,9 @@ fun ControlledSchoolWebViewDialog(
                                         }
                                         return true
                                     }
+                                    if (allowCompletionWithoutCookies && request.isForMainFrame) {
+                                        tryExtractCompletionCookies(url)
+                                    }
                                     return false
                                 }
 
@@ -274,11 +280,22 @@ fun ControlledSchoolWebViewDialog(
                                     val path = uri.rawPath.orEmpty()
                                     if (completionPathPrefixes.none { path.startsWith(it) }) return
 
+                                    latestOnCompletionUrlCaptured?.let { urlCallback ->
+                                        if (allowCompletionWithoutCookies) {
+                                            if (rawUrl.contains("token=")) {
+                                                capturedCookiesSent = true
+                                                urlCallback(rawUrl)
+                                            }
+                                            return
+                                        }
+                                    }
+
                                     val rawCookie = CookieManager.getInstance()
                                         .getCookie("https://$host/")
                                     val parsed = ControlledWebViewContract.parseCookieHeader(rawCookie)
                                     if (parsed.isNotEmpty()) {
                                         capturedCookiesSent = true
+                                        latestOnCompletionUrlCaptured?.invoke(rawUrl)
                                         latestOnCookiesCaptured(parsed)
                                     }
                                 }

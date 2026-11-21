@@ -17,12 +17,28 @@ object ControlledWebViewContract {
         "app.upc.edu.cn",
         "libspace.upc.edu.cn",
         "mb-xyk.upc.edu.cn",
+        "tyrzfw.chaoxing.com",
+        "passport2-api.chaoxing.com",
+        "i.chaoxing.com",
         "office.chaoxing.com",
     )
 
     val timetableScopeHosts: Set<String> = setOf(
         "cas.upc.edu.cn",
         "app.upc.edu.cn",
+    )
+
+    val libraryScopeHosts: Set<String> = setOf(
+        "cas.upc.edu.cn",
+        "libspace.upc.edu.cn",
+    )
+
+    val chaoxingScopeHosts: Set<String> = setOf(
+        "cas.upc.edu.cn",
+        "tyrzfw.chaoxing.com",
+        "passport2-api.chaoxing.com",
+        "i.chaoxing.com",
+        "office.chaoxing.com",
     )
 
     enum class Decision {
@@ -80,6 +96,41 @@ object ControlledWebViewContract {
         return when (host) {
             "cas.upc.edu.cn" -> {
                 if (path.startsWith("/cas/")) Decision.ALLOW else Decision.BLOCK
+            }
+            "libspace.upc.edu.cn" -> {
+                if (path == "/libseat" ||
+                    path.startsWith("/libseat/") ||
+                    path.startsWith("/remote/static/")
+                ) {
+                    Decision.ALLOW
+                } else {
+                    Decision.BLOCK
+                }
+            }
+            "tyrzfw.chaoxing.com" -> {
+                if (path.startsWith("/auth3/upc/cas/")) Decision.ALLOW else Decision.BLOCK
+            }
+            "passport2-api.chaoxing.com" -> {
+                if (path == "/api/v2/casreceive") Decision.ALLOW else Decision.BLOCK
+            }
+            "i.chaoxing.com" -> {
+                if (path.isEmpty() || path == "/" || path == "/base" || path == "/base/") {
+                    Decision.ALLOW
+                } else {
+                    Decision.BLOCK
+                }
+            }
+            "office.chaoxing.com" -> {
+                if (path.startsWith("/front/third/apps/seat/") ||
+                    path.startsWith("/front/third/apps/seatengine/") ||
+                    path.startsWith("/front/apps/seat/") ||
+                    path.startsWith("/data/apps/seat/") ||
+                    path.startsWith("/data/apps/seatengine/")
+                ) {
+                    Decision.ALLOW
+                } else {
+                    Decision.BLOCK
+                }
             }
             else -> Decision.ALLOW
         }

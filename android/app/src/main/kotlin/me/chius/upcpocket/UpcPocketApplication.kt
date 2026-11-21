@@ -12,6 +12,7 @@ import me.chius.upcpocket.core.model.AccountInvalidationReason
 import me.chius.upcpocket.feature.card.CardBalanceRepository
 import me.chius.upcpocket.feature.classroom.FreeClassroomRepository
 import me.chius.upcpocket.feature.focus.FocusTimerController
+import me.chius.upcpocket.feature.library.LibrarySeatRepository
 import me.chius.upcpocket.feature.power.PowerRepository
 import me.chius.upcpocket.feature.timetable.TimetableRepository
 import me.chius.upcpocket.feature.todo.TodoRepository
@@ -27,6 +28,7 @@ class AppContainer(context: Context) {
     )
     val powerRepository = PowerRepository(context)
     val freeClassroomRepository = FreeClassroomRepository()
+    val librarySeatRepository = LibrarySeatRepository(schoolAccountRepository)
     val timetableRepository = TimetableRepository(
         context = context,
         schoolAccountRepository = schoolAccountRepository,
@@ -40,6 +42,7 @@ class AppContainer(context: Context) {
                 cardBalanceRepository.clearForAccountChange()
             }
             timetableRepository.onAccountInvalidated(reason)
+            librarySeatRepository.onAccountInvalidated(reason)
         }
         appScope.launch {
             schoolAccountRepository.restore()

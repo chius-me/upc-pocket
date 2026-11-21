@@ -8,6 +8,7 @@ final class AppEnvironment {
     private let accountStore: SchoolAccountStore
     private(set) var cardBalanceStore: CardBalanceStore!
     private(set) var timetableStore: TimetableStore!
+    private(set) var librarySeatStore: LibrarySeatStore!
     let todoStore: TodoStore
     let focusStore: FocusStore
     let powerStore: PowerStore
@@ -18,6 +19,7 @@ final class AppEnvironment {
     private(set) var cardBalanceState = CardBalanceUiState()
     private(set) var powerState = PowerUiState()
     private(set) var timetableState = TimetableUiState()
+    private(set) var librarySeatState = LibrarySeatUiState()
     private(set) var todoState = TodoUiState()
     private(set) var focusState = FocusUiState()
     private(set) var isLoaded = false
@@ -54,6 +56,17 @@ final class AppEnvironment {
                 await accountStore.currentLoginCredentialSnapshot()
             }
         )
+        self.librarySeatStore = LibrarySeatStore(
+            accountStateProvider: { [accountStore] in
+                await accountStore.currentAccountStateSnapshot()
+            },
+            matchesAccountGeneration: { [accountStore] accountId, generation in
+                await accountStore.matches(accountId: accountId, generation: generation)
+            },
+            loginCredentialProvider: { [accountStore] in
+                await accountStore.currentLoginCredentialSnapshot()
+            }
+        )
     }
 
     func bootstrap() async {
@@ -70,6 +83,7 @@ final class AppEnvironment {
         focusState = await restoredFocus
         cardBalanceState = await cardBalanceStore.restore()
         timetableState = await timetableStore.restore()
+        librarySeatState = await librarySeatStore.syncAccountStatusAndCampus(preferences.campus)
         isLoaded = true
         syncFocusTicker()
     }
@@ -98,12 +112,15 @@ final class AppEnvironment {
             if previousAccountId != updatedState.accountId {
                 cardBalanceState = await cardBalanceStore.clearForAccountChange()
                 timetableState = await timetableStore.onAccountInvalidated(reason: .accountChangedOrCleared)
+                librarySeatState = await librarySeatStore.onAccountInvalidated(reason: .accountChangedOrCleared)
             } else if previousAccountId != nil {
                 cardBalanceState = await cardBalanceStore.restore()
                 timetableState = await timetableStore.onAccountInvalidated(reason: .credentialsUpdated)
+                librarySeatState = await librarySeatStore.onAccountInvalidated(reason: .credentialsUpdated)
             } else {
                 cardBalanceState = await cardBalanceStore.restore()
                 timetableState = await timetableStore.restore()
+                librarySeatState = await librarySeatStore.syncAccountStatusAndCampus(preferences.campus)
             }
         }
         return result
@@ -115,6 +132,7 @@ final class AppEnvironment {
         if ok {
             cardBalanceState = await cardBalanceStore.clearForAccountChange()
             timetableState = await timetableStore.onAccountInvalidated(reason: .accountChangedOrCleared)
+            librarySeatState = await librarySeatStore.onAccountInvalidated(reason: .accountChangedOrCleared)
         }
         return ok
     }
@@ -148,6 +166,76 @@ final class AppEnvironment {
 
     func clearTimetableCache() async {
         timetableState = await timetableStore.clearLocalCache()
+    }
+
+    func syncLibraryCampus() async {
+        librarySeatState = await librarySeatStore.syncAccountStatusAndCampus(preferences.campus)
+    }
+
+    func selectLibrarySystem(_ tab: LibrarySystemTab) async {
+        librarySeatState = await librarySeatStore.selectSystem(tab)
+    }
+
+    func refreshLibrarySeat() async {
+        librarySeatState.isLoading = true
+        librarySeatState.errorMessage = nil
+        librarySeatState = await librarySeatStore.refreshActiveSystem()
+    }
+
+    func selectLibseatDate(_ date: String) async {
+        librarySeatState = await librarySeatStore.selectLibseatDate(date)
+    }
+
+    func selectLibseatBuilding(_ building: LibraryBuilding) async {
+        librarySeatState = await librarySeatStore.selectLibseatBuilding(building)
+    }
+
+    func selectLibseatFloor(_ floor: LibraryFloor?) async {
+        librarySeatState = await librarySeatStore.selectLibseatFloor(floor)
+    }
+
+    func loadLibseatRoomLayout(_ room: LibraryRoom) async {
+        librarySeatState = await librarySeatStore.loadLibseatRoomLayout(room)
+    }
+
+    func dismissLibseatRoomDetail() async {
+        librarySeatState = await librarySeatStore.dismissLibseatRoomDetail()
+    }
+
+    func selectChaoxingDate(_ date: String) async {
+        librarySeatState = await librarySeatStore.selectChaoxingDate(date)
+    }
+
+    func loadChaoxingRoomDetail(_ room: ChaoxingSeatRoom) async {
+        librarySeatState = await librarySeatStore.loadChaoxingRoomDetail(room)
+    }
+
+    func updateChaoxingWindow(startMinute: Int, endMinute: Int) async {
+        librarySeatState = await librarySeatStore.updateChaoxingWindow(startMinute: startMinute, endMinute: endMinute)
+    }
+
+    func loadChaoxingSeatUsedTimes(seatNum: String) async {
+        librarySeatState = await librarySeatStore.loadChaoxingSeatUsedTimes(seatNum: seatNum)
+    }
+
+    func dismissChaoxingRoomDetail() async {
+        librarySeatState = await librarySeatStore.dismissChaoxingRoomDetail()
+    }
+
+    func adoptLibseatWebViewToken(_ url: URL, context: ControlledWebViewPolicy.SessionContext) async {
+        librarySeatState = await librarySeatStore.adoptLibseatWebViewToken(url, sessionContext: context)
+    }
+
+    func adoptChaoxingWebViewCookies(_ cookies: [String: String], context: ControlledWebViewPolicy.SessionContext) async {
+        librarySeatState = await librarySeatStore.adoptChaoxingWebViewCookies(cookies, sessionContext: context)
+    }
+
+    func dismissLibraryInteraction() async {
+        librarySeatState = await librarySeatStore.dismissInteractionPrompt()
+    }
+
+    func clearLibrarySessions() async {
+        librarySeatState = await librarySeatStore.clearInMemorySessions()
     }
 
     func refreshCardBalance() async {

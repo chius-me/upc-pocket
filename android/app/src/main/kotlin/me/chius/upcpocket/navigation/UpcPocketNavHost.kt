@@ -28,6 +28,7 @@ import me.chius.upcpocket.feature.card.CardBalanceScreen
 import me.chius.upcpocket.feature.classroom.FreeClassroomScreen
 import me.chius.upcpocket.feature.focus.FocusScreen
 import me.chius.upcpocket.feature.home.HomeScreen
+import me.chius.upcpocket.feature.library.LibrarySeatScreen
 import me.chius.upcpocket.feature.power.PowerScreen
 import me.chius.upcpocket.feature.services.ServicesScreen
 import me.chius.upcpocket.feature.settings.AboutScreen
@@ -48,6 +49,7 @@ fun UpcPocketNavHost(
     val cardState by container.cardBalanceRepository.uiState.collectAsStateWithLifecycle()
     val powerState by container.powerRepository.uiState.collectAsStateWithLifecycle()
     val timetableState by container.timetableRepository.uiState.collectAsStateWithLifecycle()
+    val librarySeatState by container.librarySeatRepository.uiState.collectAsStateWithLifecycle()
     val todoState by container.todoRepository.uiState.collectAsStateWithLifecycle()
     val focusState by container.focusTimerController.state.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
@@ -123,6 +125,7 @@ fun UpcPocketNavHost(
                     onOpenCardBalance = { navController.navigate(AppRoute.CARD_BALANCE) },
                     onOpenPower = { navController.navigate(AppRoute.POWER) },
                     onOpenFreeClassroom = { navController.navigate(AppRoute.FREE_CLASSROOM) },
+                    onOpenLibrarySeat = { navController.navigate(AppRoute.LIBRARY_SEAT) },
                 )
             }
 
@@ -170,6 +173,7 @@ fun UpcPocketNavHost(
                     onOpenCardBalance = { navController.navigate(AppRoute.CARD_BALANCE) },
                     onOpenPower = { navController.navigate(AppRoute.POWER) },
                     onOpenFreeClassroom = { navController.navigate(AppRoute.FREE_CLASSROOM) },
+                    onOpenLibrarySeat = { navController.navigate(AppRoute.LIBRARY_SEAT) },
                 )
             }
 
@@ -253,6 +257,55 @@ fun UpcPocketNavHost(
                     preferredCampus = preferences.campus,
                     repository = container.freeClassroomRepository,
                     onBack = { navController.popBackStack() },
+                )
+            }
+
+            composable(AppRoute.LIBRARY_SEAT) {
+                LibrarySeatScreen(
+                    preferredCampus = preferences.campus,
+                    accountState = accountState,
+                    uiState = librarySeatState,
+                    onBack = { navController.popBackStack() },
+                    onOpenSchoolAccount = { navController.navigate(AppRoute.SCHOOL_ACCOUNT) },
+                    onInitialize = container.librarySeatRepository::syncAccountStatusAndCampus,
+                    onSelectSystem = { tab ->
+                        scope.launch { container.librarySeatRepository.selectSystem(tab) }
+                    },
+                    onRefresh = {
+                        scope.launch { container.librarySeatRepository.refreshActiveSystem() }
+                    },
+                    onSelectLibseatDate = { date ->
+                        scope.launch { container.librarySeatRepository.selectLibseatDate(date) }
+                    },
+                    onSelectLibseatBuilding = { building ->
+                        scope.launch { container.librarySeatRepository.selectLibseatBuilding(building) }
+                    },
+                    onSelectLibseatFloor = container.librarySeatRepository::selectLibseatFloor,
+                    onOpenLibseatRoom = { room ->
+                        scope.launch { container.librarySeatRepository.loadLibseatRoomLayout(room) }
+                    },
+                    onDismissLibseatRoom = container.librarySeatRepository::dismissLibseatRoomDetail,
+                    onSelectChaoxingDate = { date ->
+                        scope.launch { container.librarySeatRepository.selectChaoxingDate(date) }
+                    },
+                    onOpenChaoxingRoom = { room ->
+                        scope.launch { container.librarySeatRepository.loadChaoxingRoomDetail(room) }
+                    },
+                    onUpdateChaoxingWindow = { start, end ->
+                        scope.launch { container.librarySeatRepository.updateChaoxingWindow(start, end) }
+                    },
+                    onSelectChaoxingSeat = { seatNum ->
+                        scope.launch { container.librarySeatRepository.loadChaoxingSeatUsedTimes(seatNum) }
+                    },
+                    onDismissChaoxingRoom = container.librarySeatRepository::dismissChaoxingRoomDetail,
+                    onAdoptLibseatUrl = { rawUrl, ctx ->
+                        scope.launch { container.librarySeatRepository.adoptLibseatWebViewToken(rawUrl, ctx) }
+                    },
+                    onAdoptChaoxingCookies = { cookies, ctx ->
+                        scope.launch { container.librarySeatRepository.adoptChaoxingWebViewCookies(cookies, ctx) }
+                    },
+                    onDismissInteraction = container.librarySeatRepository::dismissInteractionPrompt,
+                    onClearSessions = container.librarySeatRepository::clearInMemorySessions,
                 )
             }
 

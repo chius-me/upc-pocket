@@ -9,12 +9,36 @@ struct ControlledSchoolWebViewSheet: View {
     let scopeHosts: Set<String>
     let targetCookieHost: String
     let completionPathPrefixes: Set<String>
+    let targetCookieDomains: Set<String>?
+    let onCompletionURLCaptured: (@MainActor (URL) -> Void)?
     let onCookiesCaptured: @MainActor ([String: String]) -> Void
     let onDismiss: @MainActor () -> Void
 
     @State private var isLoading = true
     @State private var errorMessage: String?
     @State private var reloadToken = 0
+
+    init(
+        sessionContext: ControlledWebViewPolicy.SessionContext,
+        accountState: SchoolAccountState,
+        scopeHosts: Set<String>,
+        targetCookieHost: String,
+        completionPathPrefixes: Set<String>,
+        targetCookieDomains: Set<String>? = nil,
+        onCompletionURLCaptured: (@MainActor (URL) -> Void)? = nil,
+        onCookiesCaptured: @escaping @MainActor ([String: String]) -> Void,
+        onDismiss: @escaping @MainActor () -> Void
+    ) {
+        self.sessionContext = sessionContext
+        self.accountState = accountState
+        self.scopeHosts = scopeHosts
+        self.targetCookieHost = targetCookieHost
+        self.completionPathPrefixes = completionPathPrefixes
+        self.targetCookieDomains = targetCookieDomains
+        self.onCompletionURLCaptured = onCompletionURLCaptured
+        self.onCookiesCaptured = onCookiesCaptured
+        self.onDismiss = onDismiss
+    }
 
     var body: some View {
         NavigationStack {
@@ -41,10 +65,12 @@ struct ControlledSchoolWebViewSheet: View {
                     entryURL: sessionContext.entryURL,
                     scopeHosts: scopeHosts,
                     targetCookieHost: targetCookieHost,
+                    targetCookieDomains: targetCookieDomains ?? [targetCookieHost.lowercased()],
                     completionPathPrefixes: completionPathPrefixes,
                     reloadToken: reloadToken,
                     onLoadingChanged: { isLoading = $0 },
                     onErrorChanged: { errorMessage = $0 },
+                    onCompletionURLCaptured: onCompletionURLCaptured,
                     onCookiesCaptured: onCookiesCaptured
                 )
             }
@@ -79,10 +105,12 @@ private struct ControlledWKWebViewRepresentable: UIViewRepresentable {
     let entryURL: URL
     let scopeHosts: Set<String>
     let targetCookieHost: String
+    let targetCookieDomains: Set<String>
     let completionPathPrefixes: Set<String>
     let reloadToken: Int
     let onLoadingChanged: @MainActor (Bool) -> Void
     let onErrorChanged: @MainActor (String?) -> Void
+    let onCompletionURLCaptured: (@MainActor (URL) -> Void)?
     let onCookiesCaptured: @MainActor ([String: String]) -> Void
 
     func makeCoordinator() -> Coordinator {
@@ -90,9 +118,11 @@ private struct ControlledWKWebViewRepresentable: UIViewRepresentable {
             entryURL: entryURL,
             scopeHosts: scopeHosts,
             targetCookieHost: targetCookieHost,
+            targetCookieDomains: targetCookieDomains,
             completionPathPrefixes: completionPathPrefixes,
             onLoadingChanged: onLoadingChanged,
             onErrorChanged: onErrorChanged,
+            onCompletionURLCaptured: onCompletionURLCaptured,
             onCookiesCaptured: onCookiesCaptured
         )
     }
@@ -123,9 +153,11 @@ private struct ControlledWKWebViewRepresentable: UIViewRepresentable {
         private let entryURL: URL
         private let scopeHosts: Set<String>
         private let targetCookieHost: String
+        private let targetCookieDomains: Set<String>
         private let completionPathPrefixes: Set<String>
         private let onLoadingChanged: @MainActor (Bool) -> Void
         private let onErrorChanged: @MainActor (String?) -> Void
+        private let onCompletionURLCaptured: (@MainActor (URL) -> Void)?
         private let onCookiesCaptured: @MainActor ([String: String]) -> Void
 
         var lastReloadToken = 0
@@ -135,17 +167,21 @@ private struct ControlledWKWebViewRepresentable: UIViewRepresentable {
             entryURL: URL,
             scopeHosts: Set<String>,
             targetCookieHost: String,
+            targetCookieDomains: Set<String>,
             completionPathPrefixes: Set<String>,
             onLoadingChanged: @escaping @MainActor (Bool) -> Void,
             onErrorChanged: @escaping @MainActor (String?) -> Void,
+            onCompletionURLCaptured: (@MainActor (URL) -> Void)?,
             onCookiesCaptured: @escaping @MainActor ([String: String]) -> Void
         ) {
             self.entryURL = entryURL
             self.scopeHosts = scopeHosts
             self.targetCookieHost = targetCookieHost.lowercased()
+            self.targetCookieDomains = Set(targetCookieDomains.map { $0.lowercased() })
             self.completionPathPrefixes = completionPathPrefixes
             self.onLoadingChanged = onLoadingChanged
             self.onErrorChanged = onErrorChanged
+            self.onCompletionURLCaptured = onCompletionURLCaptured
             self.onCookiesCaptured = onCookiesCaptured
         }
 
@@ -189,7 +225,16 @@ private struct ControlledWKWebViewRepresentable: UIViewRepresentable {
                 decisionHandler(.cancel)
                 return
             }
+            if isMainFrame, onCompletionURLCaptured != nil, let url = navigationAction.request.url {
+                tryExtractCompletion(from: webView, currentURL: url)
+            }
             decisionHandler(.allow)
+        }
+
+        func webView(_ webView: WKWebView, didReceiveServerRedirectForProvisionalNavigation navigation: WKNavigation!) {
+            if let url = webView.url, onCompletionURLCaptured != nil {
+                tryExtractCompletion(from: webView, currentURL: url)
+            }
         }
 
         func webView(
@@ -213,7 +258,7 @@ private struct ControlledWKWebViewRepresentable: UIViewRepresentable {
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
             onLoadingChanged(false)
             webView.evaluateJavaScript(Self.casViewportRepairJS, completionHandler: nil)
-            tryExtractCompletionCookies(from: webView)
+            tryExtractCompletion(from: webView, currentURL: webView.url)
         }
 
         func webView(
@@ -241,9 +286,9 @@ private struct ControlledWKWebViewRepresentable: UIViewRepresentable {
             onErrorChanged("页面加载失败，请点击右上角刷新重试")
         }
 
-        private func tryExtractCompletionCookies(from webView: WKWebView) {
+        private func tryExtractCompletion(from webView: WKWebView, currentURL: URL?) {
             guard !capturedCookiesSent,
-                  let currentURL = webView.url,
+                  let currentURL,
                   currentURL.scheme?.lowercased() == "https",
                   currentURL.host?.lowercased() == targetCookieHost else {
                 return
@@ -253,12 +298,28 @@ private struct ControlledWKWebViewRepresentable: UIViewRepresentable {
                 return
             }
 
+            if let onCompletionURLCaptured {
+                if currentURL.absoluteString.contains("token=") {
+                    capturedCookiesSent = true
+                    onCompletionURLCaptured(currentURL)
+                }
+                return
+            }
+
             let targetHost = targetCookieHost
+            let allowedDomains = targetCookieDomains
             let cookieStore = webView.configuration.websiteDataStore.httpCookieStore
             cookieStore.getAllCookies { [weak self] allCookies in
                 Task { @MainActor [weak self] in
                     guard let self, !self.capturedCookiesSent else { return }
                     var extracted: [String: String] = [:]
+                    for cookie in allCookies {
+                        var domain = cookie.domain.lowercased()
+                        while domain.hasPrefix(".") { domain.removeFirst() }
+                        if allowedDomains.contains(domain), domain != targetHost {
+                            extracted[cookie.name] = cookie.value
+                        }
+                    }
                     for cookie in allCookies {
                         var domain = cookie.domain.lowercased()
                         while domain.hasPrefix(".") { domain.removeFirst() }

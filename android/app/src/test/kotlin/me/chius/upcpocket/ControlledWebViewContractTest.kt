@@ -82,6 +82,41 @@ class ControlledWebViewContractTest {
             ),
         )
         assertEquals(
+            Decision.ALLOW,
+            ControlledWebViewContract.inspectNavigation(
+                "https://libspace.upc.edu.cn/libseat/#/login?token=abc",
+                scopeHosts = ControlledWebViewContract.libraryScopeHosts,
+            ),
+        )
+        assertEquals(
+            Decision.BLOCK,
+            ControlledWebViewContract.inspectNavigation(
+                "https://libspace.upc.edu.cn/admin",
+                scopeHosts = ControlledWebViewContract.libraryScopeHosts,
+            ),
+        )
+        assertEquals(
+            Decision.ALLOW,
+            ControlledWebViewContract.inspectNavigation(
+                "https://tyrzfw.chaoxing.com/auth3/upc/cas/init?refer=https%3A%2F%2Foffice.chaoxing.com",
+                scopeHosts = ControlledWebViewContract.chaoxingScopeHosts,
+            ),
+        )
+        assertEquals(
+            Decision.ALLOW,
+            ControlledWebViewContract.inspectNavigation(
+                "https://passport2-api.chaoxing.com/api/v2/casreceive?thirdinfo=1&setmain=true",
+                scopeHosts = ControlledWebViewContract.chaoxingScopeHosts,
+            ),
+        )
+        assertEquals(
+            Decision.BLOCK,
+            ControlledWebViewContract.inspectNavigation(
+                "https://office.chaoxing.com/front/third/apps/other/index",
+                scopeHosts = ControlledWebViewContract.chaoxingScopeHosts,
+            ),
+        )
+        assertEquals(
             Decision.BLOCK,
             ControlledWebViewContract.inspectEntryUrl("about:blank"),
         )

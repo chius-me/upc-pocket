@@ -77,6 +77,17 @@ data class UpcCasService(
     }
 }
 
+sealed interface CasCallbackResult {
+    data class Callback(val callbackUri: URI) : CasCallbackResult
+    data object InvalidCredentials : CasCallbackResult
+    data class InteractionRequired(
+        val interactionUrl: String,
+        val reason: String,
+    ) : CasCallbackResult
+    data class NetworkError(val message: String) : CasCallbackResult
+    data class UpstreamError(val message: String) : CasCallbackResult
+}
+
 sealed interface CasLoginResult {
     class Success(
         val targetCookies: Map<String, String>,
@@ -137,39 +148,71 @@ class UpcCasLogin(
                 uri.rawFragment == null
         },
     ): CasLoginResult {
+        val jar = UpcCasCookieJar(allowedHosts = setOf(service.casHost, service.callbackHost))
+        return try {
+            when (val callback = authenticateToCallback(credential, casUrl, jar)) {
+                is CasCallbackResult.InvalidCredentials -> CasLoginResult.InvalidCredentials
+                is CasCallbackResult.InteractionRequired -> CasLoginResult.InteractionRequired(
+                    interactionUrl = callback.interactionUrl,
+                    reason = callback.reason,
+                )
+                is CasCallbackResult.NetworkError -> CasLoginResult.NetworkError(callback.message)
+                is CasCallbackResult.UpstreamError -> CasLoginResult.UpstreamError(callback.message)
+                is CasCallbackResult.Callback -> followCallbackHops(
+                    jar = jar,
+                    startUri = callback.callbackUri,
+                    isAllowedAppHop = isAllowedAppHop,
+                )
+            }
+        } catch (failure: CasTransportException) {
+            failure.toLoginError()
+        } finally {
+            jar.clear()
+        }
+    }
+
+    /**
+     * Authenticates a single-shot CAS login against a pre-seeded [jar] and returns the verified
+     * callback URI without clearing [jar], allowing downstream authenticators (library, Chaoxing)
+     * to preserve app/SSO session cookies while clearing the jar when finished.
+     */
+    suspend fun authenticateToCallback(
+        credential: SchoolLoginCredential,
+        casUrl: String,
+        jar: UpcCasCookieJar,
+    ): CasCallbackResult {
         val casUri = parseUriOrNull(casUrl)
         if (casUri == null || !service.isCasLoginUrl(casUri)) {
-            return CasLoginResult.UpstreamError("CAS 登录入口参数校验未通过")
+            return CasCallbackResult.UpstreamError("CAS 登录入口参数校验未通过")
         }
 
-        val jar = UpcCasCookieJar(allowedHosts = setOf(service.casHost, service.callbackHost))
         return try {
             val getResponse = executeWithJar(jar, CasHttpRequest(url = casUrl, method = "GET"))
             if (getResponse.statusCode in 300..399) {
-                return CasLoginResult.UpstreamError("学校认证页返回意外重定向（HTTP ${getResponse.statusCode}）")
+                return CasCallbackResult.UpstreamError("学校认证页返回意外重定向（HTTP ${getResponse.statusCode}）")
             }
             if (getResponse.statusCode == 429) {
-                return CasLoginResult.UpstreamError("学校认证请求过于频繁，请稍后重试")
+                return CasCallbackResult.UpstreamError("学校认证请求过于频繁，请稍后重试")
             }
             if (getResponse.statusCode !in setOf(200, 401, 403)) {
-                return CasLoginResult.UpstreamError("学校认证服务暂时不可用（HTTP ${getResponse.statusCode}）")
+                return CasCallbackResult.UpstreamError("学校认证服务暂时不可用（HTTP ${getResponse.statusCode}）")
             }
 
             val form = runCatching { parseCasLoginForm(getResponse.body) }.getOrNull()
             if (form != null && (form.captchaRequired || form.hasSecondFactor)) {
-                return CasLoginResult.InteractionRequired(
+                return CasCallbackResult.InteractionRequired(
                     interactionUrl = casUrl,
                     reason = if (form.hasSecondFactor) "需要二次验证" else "需要图形或行为验证码",
                 )
             }
             if (form != null && isExplicitCasCredentialRejection(form.errorText)) {
-                return CasLoginResult.InvalidCredentials
+                return CasCallbackResult.InvalidCredentials
             }
             val validatedAction = validateAndResolveFormAction(form, casUrl)
                 ?: return if (getResponse.statusCode in setOf(401, 403)) {
-                    CasLoginResult.UpstreamError("学校认证拒绝访问（HTTP ${getResponse.statusCode}）")
+                    CasCallbackResult.UpstreamError("学校认证拒绝访问（HTTP ${getResponse.statusCode}）")
                 } else {
-                    CasLoginResult.UpstreamError("未检测到可验证的 CAS 登录表单")
+                    CasCallbackResult.UpstreamError("未检测到可验证的 CAS 登录表单")
                 }
 
             val validatedForm = requireNotNull(form)
@@ -200,9 +243,9 @@ class UpcCasLogin(
 
             if (postResponse.statusCode in 300..399) {
                 val location = postResponse.location
-                    ?: return CasLoginResult.UpstreamError("CAS 认证重定向缺少目标地址")
+                    ?: return CasCallbackResult.UpstreamError("CAS 认证重定向缺少目标地址")
                 val targetUri = resolveHttpUri(validatedAction, location)
-                    ?: return CasLoginResult.UpstreamError("CAS 认证重定向目标无效")
+                    ?: return CasCallbackResult.UpstreamError("CAS 认证重定向目标无效")
 
                 return when {
                     service.isCasLoginUrl(targetUri) -> classifyReturnedCasPage(
@@ -210,35 +253,31 @@ class UpcCasLogin(
                         targetUrl = targetUri.toString(),
                         interactionUrl = casUrl,
                     )
-                    service.isCallbackUrl(targetUri) -> followCallbackHops(
-                        jar = jar,
-                        startUri = targetUri,
-                        isAllowedAppHop = isAllowedAppHop,
-                    )
-                    else -> CasLoginResult.UpstreamError("CAS 回调目标未通过域与参数白名单校验")
+                    service.isCallbackUrl(targetUri) -> CasCallbackResult.Callback(targetUri)
+                    else -> CasCallbackResult.UpstreamError("CAS 回调目标未通过域与参数白名单校验")
                 }
             }
 
             if (postResponse.statusCode == 429) {
-                return CasLoginResult.UpstreamError("学校认证请求过于频繁，请稍后重试")
+                return CasCallbackResult.UpstreamError("学校认证请求过于频繁，请稍后重试")
             }
             if (postResponse.statusCode !in setOf(200, 401, 403)) {
-                return CasLoginResult.UpstreamError("学校认证提交返回 HTTP ${postResponse.statusCode}")
+                return CasCallbackResult.UpstreamError("学校认证提交返回 HTTP ${postResponse.statusCode}")
             }
 
             val returnedForm = runCatching { parseCasLoginForm(postResponse.body) }.getOrNull()
             if (returnedForm != null) {
                 if (returnedForm.captchaRequired || returnedForm.hasSecondFactor) {
-                    return CasLoginResult.InteractionRequired(
+                    return CasCallbackResult.InteractionRequired(
                         interactionUrl = casUrl,
                         reason = if (returnedForm.hasSecondFactor) "需要二次验证" else "需要验证码验证",
                     )
                 }
                 if (isExplicitCasCredentialRejection(returnedForm.errorText)) {
-                    return CasLoginResult.InvalidCredentials
+                    return CasCallbackResult.InvalidCredentials
                 }
             }
-            CasLoginResult.InteractionRequired(
+            CasCallbackResult.InteractionRequired(
                 interactionUrl = casUrl,
                 reason = "需要完成交互式学校登录验证",
             )
@@ -246,14 +285,12 @@ class UpcCasLogin(
             when (failure.failure) {
                 CasTransportFailure.NETWORK,
                 CasTransportFailure.TIMEOUT,
-                -> CasLoginResult.NetworkError(failure.message ?: "无法连接学校认证服务，请检查网络后重试")
+                -> CasCallbackResult.NetworkError(failure.message ?: "无法连接学校认证服务，请检查网络后重试")
                 CasTransportFailure.TLS,
                 CasTransportFailure.TOO_LARGE,
                 CasTransportFailure.PROTOCOL,
-                -> CasLoginResult.UpstreamError(failure.message ?: "学校认证连接或协议异常")
+                -> CasCallbackResult.UpstreamError(failure.message ?: "学校认证连接或协议异常")
             }
-        } finally {
-            jar.clear()
         }
     }
 
@@ -261,30 +298,40 @@ class UpcCasLogin(
         jar: UpcCasCookieJar,
         targetUrl: String,
         interactionUrl: String,
-    ): CasLoginResult {
+    ): CasCallbackResult {
         val response = executeWithJar(jar, CasHttpRequest(url = targetUrl, method = "GET"))
         if (response.statusCode == 429) {
-            return CasLoginResult.UpstreamError("学校认证请求过于频繁，请稍后重试")
+            return CasCallbackResult.UpstreamError("学校认证请求过于频繁，请稍后重试")
         }
         if (response.statusCode >= 500 || response.statusCode !in setOf(200, 401, 403)) {
-            return CasLoginResult.UpstreamError("CAS 返回页面异常（HTTP ${response.statusCode}）")
+            return CasCallbackResult.UpstreamError("CAS 返回页面异常（HTTP ${response.statusCode}）")
         }
         val form = runCatching { parseCasLoginForm(response.body) }.getOrNull()
         if (form != null) {
             if (form.captchaRequired || form.hasSecondFactor) {
-                return CasLoginResult.InteractionRequired(
+                return CasCallbackResult.InteractionRequired(
                     interactionUrl = interactionUrl,
                     reason = if (form.hasSecondFactor) "需要二次验证" else "需要验证码验证",
                 )
             }
             if (isExplicitCasCredentialRejection(form.errorText)) {
-                return CasLoginResult.InvalidCredentials
+                return CasCallbackResult.InvalidCredentials
             }
         }
-        return CasLoginResult.InteractionRequired(
+        return CasCallbackResult.InteractionRequired(
             interactionUrl = interactionUrl,
             reason = "需要通过页面完成学校验证",
         )
+    }
+
+    private fun CasTransportException.toLoginError(): CasLoginResult = when (failure) {
+        CasTransportFailure.NETWORK,
+        CasTransportFailure.TIMEOUT,
+        -> CasLoginResult.NetworkError(message ?: "无法连接学校认证服务，请检查网络后重试")
+        CasTransportFailure.TLS,
+        CasTransportFailure.TOO_LARGE,
+        CasTransportFailure.PROTOCOL,
+        -> CasLoginResult.UpstreamError(message ?: "学校认证连接或协议异常")
     }
 
     private suspend fun followCallbackHops(

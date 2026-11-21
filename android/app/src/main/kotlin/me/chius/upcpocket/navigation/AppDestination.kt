@@ -50,5 +50,6 @@ object AppRoute {
     const val CARD_BALANCE = "card_balance"
     const val POWER = "power"
     const val FREE_CLASSROOM = "free_classroom"
+    const val LIBRARY_SEAT = "library_seat"
     const val TODOS = "todos"
 }

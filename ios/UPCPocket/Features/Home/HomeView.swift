@@ -8,6 +8,7 @@ enum HomeDestination: Hashable {
     case cardBalance
     case power
     case freeClassroom
+    case librarySeat
 }
 
 struct HomeView: View {
@@ -32,7 +33,7 @@ struct HomeView: View {
                             .buttonStyle(.plain)
                             .upcGlassCapsule(tint: UPCTheme.brandBlue.opacity(0.14), interactive: true)
 
-                            Text("M2a 日程与专注")
+                            Text("M2b 图书馆只读")
                                 .font(.caption.weight(.medium))
                                 .foregroundStyle(.secondary)
                                 .padding(.horizontal, 10)
@@ -203,6 +204,23 @@ struct HomeView: View {
                                 .foregroundStyle(UPCTheme.brandBlue)
                         }
                     }
+
+                    Button {
+                        path.append(.librarySeat)
+                    } label: {
+                        Label {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("图书馆座位")
+                                    .foregroundStyle(.primary)
+                                Text("唐岛湾 libseat / 古镇口东区 / 求是只读余座与预约查看")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        } icon: {
+                            Image(systemName: "chair.lounge")
+                                .foregroundStyle(UPCTheme.campusJade)
+                        }
+                    }
                 }
 
                 Section("安全基线") {
@@ -247,6 +265,8 @@ struct HomeView: View {
                     PowerView(environment: environment)
                 case .freeClassroom:
                     FreeClassroomView(environment: environment)
+                case .librarySeat:
+                    LibrarySeatView(environment: environment)
                 }
             }
         }

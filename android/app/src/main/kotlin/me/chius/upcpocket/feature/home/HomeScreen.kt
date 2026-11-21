@@ -17,6 +17,7 @@ import androidx.compose.material.icons.rounded.AccountBalanceWallet
 import androidx.compose.material.icons.rounded.Bolt
 import androidx.compose.material.icons.rounded.CalendarToday
 import androidx.compose.material.icons.rounded.CheckCircleOutline
+import androidx.compose.material.icons.rounded.EventSeat
 import androidx.compose.material.icons.rounded.LocationOn
 import androidx.compose.material.icons.rounded.MeetingRoom
 import androidx.compose.material.icons.rounded.Person
@@ -69,6 +70,7 @@ fun HomeScreen(
     onOpenCardBalance: () -> Unit,
     onOpenPower: () -> Unit,
     onOpenFreeClassroom: () -> Unit,
+    onOpenLibrarySeat: () -> Unit,
 ) {
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
 
@@ -132,7 +134,7 @@ fun HomeScreen(
                         }
                     }
                     ExpressiveStatusBadge(
-                        text = "M2a 日程与专注",
+                        text = "M2b 图书馆只读",
                         containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
                         contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -342,6 +344,25 @@ fun HomeScreen(
                         )
                     },
                     onClick = onOpenFreeClassroom,
+                )
+            }
+
+            item {
+                ExpressiveListRow(
+                    title = "图书馆座位",
+                    subtitle = "唐岛湾 libseat / 古镇口东区 / 求是只读余座与预约查看",
+                    leadingIcon = Icons.Rounded.EventSeat,
+                    leadingContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                    leadingContentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                    position = GroupedCardPosition.MIDDLE,
+                    trailingContent = {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Rounded.KeyboardArrowRight,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    },
+                    onClick = onOpenLibrarySeat,
                 )
             }
 

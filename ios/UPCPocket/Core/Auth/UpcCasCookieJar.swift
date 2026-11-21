@@ -20,9 +20,17 @@ actor UpcCasCookieJar {
             return false
         }
 
-        func matches(host: String, requestPath: String, isHTTPS: Bool, now: TimeInterval) -> Bool {
+        func matches(
+            host: String,
+            requestPath: String,
+            isHTTPS: Bool,
+            now: TimeInterval,
+            allowedHosts: Set<String>
+        ) -> Bool {
             if isExpired(at: now) { return false }
-            if domain != host { return false }
+            let domainMatches = domain == host ||
+                (host.hasSuffix(".\(domain)") && allowedHosts.contains(domain) && allowedHosts.contains(host))
+            if !domainMatches { return false }
             if secure && !isHTTPS { return false }
             if path == "/" { return true }
             if requestPath == path { return true }
@@ -82,9 +90,13 @@ actor UpcCasCookieJar {
         let now = clock()
         entries.removeAll { $0.isExpired(at: now) }
 
-        let matched = entries.filter {
-            $0.matches(host: host, requestPath: path, isHTTPS: isHTTPS, now: now)
-        }
+        let matched = entries
+            .filter {
+                $0.matches(host: host, requestPath: path, isHTTPS: isHTTPS, now: now, allowedHosts: allowedHosts)
+            }
+            .sorted { lhs, rhs in
+                (lhs.domain == host ? 0 : 1) < (rhs.domain == host ? 0 : 1)
+            }
         guard !matched.isEmpty else { return nil }
         return matched.map { "\($0.name)=\($0.value)" }.joined(separator: "; ")
     }
@@ -94,6 +106,11 @@ actor UpcCasCookieJar {
         let now = clock()
         entries.removeAll { $0.isExpired(at: now) }
         var result: [String: String] = [:]
+        for entry in entries where normalized.hasSuffix(".\(entry.domain)") &&
+            allowedHosts.contains(entry.domain) &&
+            allowedHosts.contains(normalized) {
+            result[entry.name] = entry.value
+        }
         for entry in entries where entry.domain == normalized {
             result[entry.name] = entry.value
         }
