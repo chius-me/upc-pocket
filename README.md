@@ -8,9 +8,12 @@
 
 ```text
 upc-pocket/
-├── specs/       # 双端共享架构、数据契约、视觉规范、安全基线与 UPC 官方入口目录
-├── android/     # Android 纯原生客户端（Kotlin + Jetpack Compose + Material 3 / M3 Expressive）
-├── ios/         # iOS 纯原生客户端（Swift 6 + SwiftUI，iOS 26+ Liquid Glass + iOS 18 回退）
+├── .github/workflows/  # CI 自动测试/R8/XcodeGen 检查与 Tag/手动发布流水线
+├── docs/               # 发布指引等工程文档
+├── scripts/            # 安全基线检查与 iOS Simulator 动态选择脚本
+├── specs/              # 双端共享架构、数据契约、视觉规范、安全基线与 UPC 官方入口目录
+├── android/            # Android 纯原生客户端（Kotlin + Jetpack Compose + Material 3 / M3 Expressive）
+├── ios/                # iOS 纯原生客户端（Swift 6 + SwiftUI，iOS 26+ Liquid Glass + iOS 18 回退）
 ├── LICENSE
 └── THIRD_PARTY_NOTICES.md
 ```
@@ -21,12 +24,24 @@ upc-pocket/
 - **Android 端**：Kotlin 2.3.10 + Jetpack Compose + Material 3 (`1.4.0` / BOM `2026.06.01`)，支持 Android 12+ 动态取色、标准 `NavigationBar`、折叠顶栏（`LargeTopAppBar`）、M3 分组卡片（24dp/6dp 分段圆角）、Edge-to-Edge 与预测性返回；单 `:app` 模块按功能清晰分层。
 - **iOS 端**：Swift 6（严格并发检查）+ SwiftUI，采用 XcodeGen（`project.yml`）管理；以 iOS 26+ 原生 Liquid Glass（原生悬浮 `TabView`、玻璃胶囊 toolbar、`.glassEffect()`）为基准，同时向 iOS 18 优雅回退标准 `.ultraThinMaterial` 与 `.insetGrouped` 规范。
 
-## 当前阶段：M0 骨架
+## 当前进展（M0 – M2b 已完成）
 
 - **4 个顶级 Tab**：`首页 / 课表 / 服务 / 专注`
-- **设置与账号骨架**：首页右上角进入「设置」，包含「学校账号（只保存本机加密副本，状态严格显示未保存 / 已保存未验证）」「常用校区」「外观」「安全与隐私」「关于」。
-- **交互原型**：内置「专注」Tab 纯内存 25 分钟番茄钟计时交互原型，以及「服务」Tab 校区筛选与校园官方 HTTPS 网页外链。
-- **后续演进**：先做课表、空闲教室、电量、校园卡余额及图书馆座位等基础/只读能力；校园卡充值等高风险写操作明确后置。
+- **M0–M1a 基础查询与设置**：
+  - 统一学校账号页（只保存本机加密副本，状态严格显示「未保存 / 已保存（未验证）/ 需要重新保存」）
+  - 常用校区筛选、主题外观、安全隐私说明
+  - **校园卡余额**（仅发送本人有效学号，账号绑定缓存）、**唐岛湾剩余电量**（精准校验防模糊误报）、**空闲教室**（`d.js` 交集语义 + 卓越 A/B 筛选）
+- **M1b 学校认证与课表**：
+  - 统一 CAS 表单单次认证 + 唯一受控 WebView 验证码回退 + 只读周课表与离线缓存
+- **M2a 日程与专注**：
+  - 本机待办、独立截止时间与一次性系统提醒、课表「今日日程待办」联动、专注墙钟持久化与 04:00 学习日统计
+- **M2b 图书馆座位（严格只读）**：
+  - 唐岛湾 `libseat`（HMAC 签名查询、楼层/房间/座位状态、当前与历史预约只读）与超星 `office.chaoxing.com`（古镇口东区 `seat` / 求是 `seatengine` 房间与时段占用只读）；高风险写操作（充值、抢座/预约提交等）当前明确后置。
+
+## CI/CD 与发版
+
+- **持续集成**：[`.github/workflows/ci.yml`](.github/workflows/ci.yml) 在每次向 `main` 推送或 PR 时自动执行安全基线门禁（[`scripts/check_security_baseline.sh`](scripts/check_security_baseline.sh)）、Android 单测与 Debug/R8 Release 构建、iOS `XcodeGen + XCTest + Release` 编译验证。
+- **自动发版**：[`.github/workflows/release.yml`](.github/workflows/release.yml) 支持 `v*.*.*` Tag 或 `workflow_dispatch` 触发双端发布构建与 `SHA256SUMS.txt` Release 发布，详见 [发版指南](docs/RELEASING.md)。
 
 ## 核心安全基线
 

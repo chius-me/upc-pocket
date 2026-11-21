@@ -1,0 +1,148 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch: {}
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  security-baseline:
+    name: Security Baseline & Specs
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Run security baseline check
+        run: bash scripts/check_security_baseline.sh
+
+  android-ci:
+    name: Android Build, Tests & R8 Smoke
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Set up Gradle cache
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Verify gradlew executable permission
+        run: chmod +x android/gradlew
+
+      - name: Run unit tests and build Debug & Release APKs
+        working-directory: android
+        run: ./gradlew :app:testDebugUnitTest :app:assembleDebug :app:assembleRelease --no-daemon --stacktrace
+
+      - name: Verify merged manifests (Debug & Release)
+        run: |
+          python3 - <<'PY'
+          import pathlib
+          import sys
+
+          manifests = [
+              pathlib.Path("android/app/build/intermediates/merged_manifests/debug/processDebugManifest/AndroidManifest.xml"),
+              pathlib.Path("android/app/build/intermediates/merged_manifests/release/processReleaseManifest/AndroidManifest.xml"),
+          ]
+          forbidden = ["USE_EXACT_ALARM", "SCHEDULE_EXACT_ALARM"]
+          for path in manifests:
+              if not path.is_file():
+                  sys.exit(f"Missing merged manifest: {path}")
+              text = path.read_text(encoding="utf-8")
+              if 'android:allowBackup="false"' not in text:
+                  sys.exit(f"allowBackup=false missing in {path}")
+              for token in forbidden:
+                  if token in text:
+                      sys.exit(f"Forbidden permission {token} found in {path}")
+          print("Merged Debug and Release manifests verified cleanly.")
+          PY
+
+      - name: Upload Android JUnit reports and APKs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-ci-artifacts
+          retention-days: 7
+          path: |
+            android/app/build/test-results/testDebugUnitTest/
+            android/app/build/outputs/apk/debug/*.apk
+            android/app/build/outputs/apk/release/*.apk
+
+  ios-ci:
+    name: iOS XcodeGen, XCTest & Release Build
+    runs-on: macos-26
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Select latest available Xcode
+        run: |
+          BEST_XCODE=$(ls -d /Applications/Xcode*.app 2>/dev/null | grep -vi beta | sort -V | tail -n 1 || true)
+          if [ -z "$BEST_XCODE" ]; then
+            BEST_XCODE=$(ls -d /Applications/Xcode*.app 2>/dev/null | sort -V | tail -n 1 || true)
+          fi
+          if [ -n "$BEST_XCODE" ]; then
+            sudo xcode-select -s "$BEST_XCODE/Contents/Developer"
+          fi
+          xcodebuild -version
+
+      - name: Ensure XcodeGen is installed
+        run: |
+          if ! command -v xcodegen >/dev/null 2>&1; then
+            brew install xcodegen
+          fi
+          xcodegen --version
+
+      - name: Validate Info.plist and generate Xcode project
+        working-directory: ios
+        run: |
+          plutil -lint UPCPocket/Resources/Info.plist
+          xcodegen generate
+
+      - name: Build and run XCTests on iOS Simulator
+        working-directory: ios
+        run: |
+          SIM_ID=$(python3 ../scripts/select_ios_simulator.py --id-only)
+          python3 ../scripts/select_ios_simulator.py
+          xcodebuild \
+            -project UPCPocket.xcodeproj \
+            -scheme UPCPocket \
+            -destination "platform=iOS Simulator,id=${SIM_ID}" \
+            CODE_SIGNING_ALLOWED=NO \
+            -resultBundlePath "${RUNNER_TEMP}/UPCPocketTests.xcresult" \
+            build test
+
+      - name: Verify Release generic iOS compilation
+        working-directory: ios
+        run: |
+          xcodebuild \
+            -project UPCPocket.xcodeproj \
+            -scheme UPCPocket \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            CODE_SIGNING_ALLOWED=NO \
+            build
+
+      - name: Upload XCTest result bundle on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-xcresult-failure
+          retention-days: 7
+          path: ${{ runner.temp }}/UPCPocketTests.xcresult
