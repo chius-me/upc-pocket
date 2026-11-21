@@ -38,6 +38,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import me.chius.upcpocket.BuildConfig
 import me.chius.upcpocket.core.designsystem.components.ExpressiveHeroCard
 import me.chius.upcpocket.core.designsystem.components.ExpressiveListRow
 import me.chius.upcpocket.core.designsystem.components.ExpressiveSectionHeader
@@ -134,7 +135,7 @@ fun HomeScreen(
                         }
                     }
                     ExpressiveStatusBadge(
-                        text = "M2b 图书馆只读",
+                        text = "v${BuildConfig.VERSION_NAME}",
                         containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
                         contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
                     )

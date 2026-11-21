@@ -73,7 +73,7 @@ fun AboutScreen(
                     title = "UPC Pocket",
                     subtitle = "面向中国石油大学（华东）的非官方纯原生校园工具 · 版本 ${BuildConfig.VERSION_NAME}",
                     icon = Icons.Rounded.Info,
-                    badgeText = "M2b",
+                    badgeText = "v${BuildConfig.VERSION_NAME}",
                     modifier = Modifier.padding(bottom = 18.dp),
                 )
             }

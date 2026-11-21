@@ -2,6 +2,8 @@
 
 本仓库通过 `.github/workflows/` 两条工作流实现自动持续集成与跨平台发版。
 
+> **发版前检查**：正式打 Tag 前，请按 [`docs/RELEASE_QA_CHECKLIST.md`](RELEASE_QA_CHECKLIST.md) 完成 Android/iOS 签名准备与真实石大账号真机验收。
+
 ---
 
 ## 1. 持续集成：[`.github/workflows/ci.yml`](../.github/workflows/ci.yml)

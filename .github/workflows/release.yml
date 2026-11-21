@@ -43,7 +43,7 @@ jobs:
       is_prerelease: ${{ steps.meta.outputs.is_prerelease }}
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Run security baseline check
         run: bash scripts/check_security_baseline.sh
@@ -95,16 +95,16 @@ jobs:
       apk_name: ${{ steps.android_build.outputs.apk_name }}
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Set up JDK 21
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: '21'
 
       - name: Set up Gradle cache
-        uses: gradle/actions/setup-gradle@v4
+        uses: gradle/actions/setup-gradle@v6
 
       - name: Run Android unit tests
         working-directory: android
@@ -178,7 +178,7 @@ jobs:
         run: rm -f "$RUNNER_TEMP/release-keystore.jks"
 
       - name: Upload Android release artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: android-release-assets
           retention-days: 7
@@ -194,7 +194,7 @@ jobs:
       testflight_uploaded: ${{ steps.testflight.outputs.uploaded || 'false' }}
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Select latest available Xcode
         run: |
@@ -385,7 +385,7 @@ jobs:
           rm -rf "$HOME/Library/MobileDevice/Provisioning Profiles/"*.mobileprovision 2>/dev/null || true
 
       - name: Upload iOS release artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ios-release-assets
           retention-days: 7
@@ -402,10 +402,10 @@ jobs:
       contents: write
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Download release artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: release-artifacts
 
@@ -458,7 +458,7 @@ jobs:
           EOF
 
       - name: Create or update GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ needs.prepare.outputs.tag }}
           name: UPC Pocket ${{ needs.prepare.outputs.tag }}

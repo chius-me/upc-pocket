@@ -33,7 +33,7 @@ struct HomeView: View {
                             .buttonStyle(.plain)
                             .upcGlassCapsule(tint: UPCTheme.brandBlue.opacity(0.14), interactive: true)
 
-                            Text("M2b 图书馆只读")
+                            Text("v\(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.2.0")")
                                 .font(.caption.weight(.medium))
                                 .foregroundStyle(.secondary)
                                 .padding(.horizontal, 10)
