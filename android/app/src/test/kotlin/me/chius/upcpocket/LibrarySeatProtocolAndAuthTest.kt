@@ -24,6 +24,7 @@ import me.chius.upcpocket.core.model.SchoolLoginCredential
 import me.chius.upcpocket.core.webview.ControlledWebViewContract
 import me.chius.upcpocket.feature.library.ChaoxingException
 import me.chius.upcpocket.feature.library.ChaoxingProtocol
+import me.chius.upcpocket.feature.library.ChaoxingReservationResult
 import me.chius.upcpocket.feature.library.ChaoxingSeatKind
 import me.chius.upcpocket.feature.library.LibraryBuilding
 import me.chius.upcpocket.feature.library.LibraryConnectionStatus
@@ -388,6 +389,78 @@ class LibrarySeatProtocolAndAuthTest {
         )
         repo.adoptLibseatWebViewToken("https://libspace.upc.edu.cn/libseat/#/login?token=app-t", staleCtx)
         assertEquals(LibraryConnectionStatus.UNCONFIGURED, repo.uiState.value.connectionStatus)
+    }
+
+    @Test
+    fun `parses libseat reserve time options, captcha preflight and chaoxing booking protocol`() {
+        val starts = LibrarySeatProtocol.parseStartTimes(
+            """{"status":"success","data":{"startTimes":[{"id":-1,"value":"现在"},{"id":"600","value":"10:00"}]}}""",
+        )
+        assertEquals(2, starts.size)
+        assertEquals("-1", starts[0].normalizedId)
+        assertEquals("10:00", starts[1].value)
+
+        val ends = LibrarySeatProtocol.parseEndTimes(
+            """{"status":"success","data":{"endTimes":[{"id":"720","value":"12:00"}]}}""",
+        )
+        assertEquals("720", ends.single().id)
+        assertTrue(LibrarySeatProtocol.isCaptchaEnabled("""{"status":"success","data":{"isCaptchaOpen":"1"}}"""))
+        assertFalse(LibrarySeatProtocol.isCaptchaEnabled("""{"status":"success","data":{"isCaptchaOpen":false}}"""))
+        LibrarySeatProtocol.ensureBooked("""{"status":"success","data":{"id":"res1"}}""")
+
+        val selectHtml = """
+            <html>
+            <input type="hidden" id="submit_enc" value="abc123enc" />
+            <script>var wfwEngineEnc = 'wfw999'; var riskCheckOpen = false;</script>
+            </html>
+        """.trimIndent()
+        val secrets = ChaoxingProtocol.parseSelectPage(selectHtml)
+        assertEquals("abc123enc", secrets.submitEnc)
+        assertEquals("wfw999", secrets.wfwEngineEnc)
+        assertFalse(secrets.riskCheckRequired)
+
+        val submitParams = ChaoxingProtocol.submitParams(
+            kind = ChaoxingSeatKind.SEAT,
+            deptIdEnc = "e32f8fbde51f9dba",
+            roomId = 12,
+            day = "2026-11-21",
+            startTime = "08:00",
+            endTime = "12:00",
+            seatNum = "015",
+            submitEnc = secrets.submitEnc,
+            wfwEngineEnc = secrets.wfwEngineEnc,
+        )
+        assertEquals(32, submitParams["enc"]?.length)
+        assertEquals("015", submitParams["seatNum"])
+
+        assertTrue(
+            ChaoxingProtocol.parseSubmitResponse(
+                """{"success":true,"data":{"seatReserve":{"seatNum":"015","day":"2026-11-21"}}}""",
+                seatNum = "015",
+                day = "2026-11-21",
+            ) is ChaoxingReservationResult.Success,
+        )
+        assertTrue(
+            ChaoxingProtocol.parseSubmitResponse(
+                """{"success":false,"msg":"该时段已被预约"}""",
+                seatNum = "015",
+                day = "2026-11-21",
+            ) is ChaoxingReservationResult.Rejected,
+        )
+        assertTrue(
+            ChaoxingProtocol.parseSubmitResponse(
+                """{"success":false,"msg":"需要完成安全验证 captcha"}""",
+                seatNum = "015",
+                day = "2026-11-21",
+            ) is ChaoxingReservationResult.InteractionRequired,
+        )
+        assertTrue(
+            ChaoxingProtocol.parseSubmitResponse(
+                """not-json""",
+                seatNum = "015",
+                day = "2026-11-21",
+            ) is ChaoxingReservationResult.Unknown,
+        )
     }
 
     private fun sampleCredential(

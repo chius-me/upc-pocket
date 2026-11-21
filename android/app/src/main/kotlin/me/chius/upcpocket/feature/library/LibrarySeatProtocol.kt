@@ -16,8 +16,8 @@ import me.chius.upcpocket.core.auth.UpcLibraryAuthenticator
 import me.chius.upcpocket.core.auth.UpcLibrarySigning
 
 /**
- * Strict read-only protocol parsers for `libspace.upc.edu.cn` (`libseat`).
- * Booking, cancelling, and check-in endpoints are intentionally absent.
+ * Protocol parsers for `libspace.upc.edu.cn` (`libseat`): filters, rooms, seat layouts,
+ * start/end reservation windows, preflight settings, reservations, booking (`freeBook`), and cancellation.
  */
 object LibrarySeatProtocol {
     const val BASE_URL = "https://libspace.upc.edu.cn"
@@ -182,6 +182,43 @@ object LibrarySeatProtocol {
             location = location,
             status = string(obj, "stat", "status"),
         )
+    }
+
+    fun parseStartTimes(body: String): List<LibraryTimeOption> {
+        val root = objectOf(body)
+        ensureBusinessSuccess(root)
+        val data = root["data"] as? JsonObject ?: fail("开始时间响应缺少 data")
+        val arr = data["startTimes"] as? JsonArray ?: fail("学校未返回开始时间")
+        return parseTimeArray(arr)
+    }
+
+    fun parseEndTimes(body: String): List<LibraryTimeOption> {
+        val root = objectOf(body)
+        ensureBusinessSuccess(root)
+        val data = root["data"] as? JsonObject ?: fail("结束时间响应缺少 data")
+        val arr = data["endTimes"] as? JsonArray ?: fail("学校未返回结束时间")
+        return parseTimeArray(arr)
+    }
+
+    private fun parseTimeArray(arr: JsonArray): List<LibraryTimeOption> = arr.map { item ->
+        val obj = item as? JsonObject ?: fail("时间字段格式异常")
+        val id = primitiveText(obj["id"]) ?: fail("时间缺少 id")
+        LibraryTimeOption(
+            id = id,
+            value = string(obj, "value").ifBlank { id },
+        )
+    }
+
+    fun isCaptchaEnabled(body: String): Boolean {
+        val root = objectOf(body)
+        val data = root["data"] as? JsonObject ?: return false
+        val raw = (data["isCaptchaOpen"] as? JsonPrimitive)?.contentOrNull
+        return raw == "1" || raw.equals("true", ignoreCase = true)
+    }
+
+    fun ensureBooked(body: String) {
+        val root = objectOf(body)
+        ensureBusinessSuccess(root)
     }
 
     internal fun objectOf(body: String): JsonObject {

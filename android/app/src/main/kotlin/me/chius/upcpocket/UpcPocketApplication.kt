@@ -9,13 +9,16 @@ import kotlinx.coroutines.launch
 import me.chius.upcpocket.core.data.AppPreferencesRepository
 import me.chius.upcpocket.core.data.SchoolAccountRepository
 import me.chius.upcpocket.core.model.AccountInvalidationReason
+import me.chius.upcpocket.core.update.AppUpdateChecker
+import me.chius.upcpocket.feature.calendar.AcademicCalendarRepository
 import me.chius.upcpocket.feature.card.CardBalanceRepository
+import me.chius.upcpocket.feature.card.CardWalletRepository
 import me.chius.upcpocket.feature.classroom.FreeClassroomRepository
-import me.chius.upcpocket.feature.focus.FocusTimerController
+import me.chius.upcpocket.feature.grades.GradesRepository
 import me.chius.upcpocket.feature.library.LibrarySeatRepository
 import me.chius.upcpocket.feature.power.PowerRepository
+import me.chius.upcpocket.feature.shiguang.ShiguangRepository
 import me.chius.upcpocket.feature.timetable.TimetableRepository
-import me.chius.upcpocket.feature.todo.TodoRepository
 
 class AppContainer(context: Context) {
     private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -26,6 +29,14 @@ class AppContainer(context: Context) {
         context = context,
         identityProvider = { schoolAccountRepository.studentIdentity.value },
     )
+    val cardWalletRepository = CardWalletRepository(
+        context = context,
+        schoolAccountRepository = schoolAccountRepository,
+    )
+    val gradesRepository = GradesRepository(
+        context = context,
+        schoolAccountRepository = schoolAccountRepository,
+    )
     val powerRepository = PowerRepository(context)
     val freeClassroomRepository = FreeClassroomRepository()
     val librarySeatRepository = LibrarySeatRepository(schoolAccountRepository)
@@ -33,8 +44,9 @@ class AppContainer(context: Context) {
         context = context,
         schoolAccountRepository = schoolAccountRepository,
     )
-    val todoRepository = TodoRepository(context)
-    val focusTimerController = FocusTimerController(context)
+    val shiguangRepository = ShiguangRepository(schoolAccountRepository)
+    val academicCalendarRepository = AcademicCalendarRepository(context)
+    val appUpdateChecker = AppUpdateChecker()
 
     init {
         schoolAccountRepository.addInvalidationListener { reason ->
@@ -43,14 +55,17 @@ class AppContainer(context: Context) {
             }
             timetableRepository.onAccountInvalidated(reason)
             librarySeatRepository.onAccountInvalidated(reason)
+            gradesRepository.onAccountInvalidated(reason)
+            cardWalletRepository.onAccountInvalidated(reason)
+            shiguangRepository.onAccountInvalidated(reason)
         }
         appScope.launch {
             schoolAccountRepository.restore()
             cardBalanceRepository.restore()
             powerRepository.restore()
             timetableRepository.restore()
-            todoRepository.restore()
-            focusTimerController.restore()
+            gradesRepository.restore()
+            shiguangRepository.syncAccountStatus()
         }
     }
 }

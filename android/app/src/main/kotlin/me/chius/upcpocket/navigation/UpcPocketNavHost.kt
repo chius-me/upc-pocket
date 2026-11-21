@@ -12,7 +12,10 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -21,20 +24,24 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.launch
 import me.chius.upcpocket.AppContainer
+import me.chius.upcpocket.core.model.AccountStatus
 import me.chius.upcpocket.feature.account.SchoolAccountScreen
-import me.chius.upcpocket.feature.card.CardBalanceScreen
+import me.chius.upcpocket.feature.calendar.AcademicCalendarScreen
+import me.chius.upcpocket.feature.card.CardWalletScreen
 import me.chius.upcpocket.feature.classroom.FreeClassroomScreen
-import me.chius.upcpocket.feature.focus.FocusScreen
-import me.chius.upcpocket.feature.home.HomeScreen
+import me.chius.upcpocket.feature.grades.GradesScreen
+import me.chius.upcpocket.feature.home.TodayScreen
 import me.chius.upcpocket.feature.library.LibrarySeatScreen
 import me.chius.upcpocket.feature.power.PowerScreen
-import me.chius.upcpocket.feature.services.ServicesScreen
+import me.chius.upcpocket.feature.services.CampusScreen
 import me.chius.upcpocket.feature.settings.AboutScreen
 import me.chius.upcpocket.feature.settings.SettingsScreen
+import me.chius.upcpocket.feature.shiguang.ShiguangScreen
 import me.chius.upcpocket.feature.timetable.TimetableScreen
-import me.chius.upcpocket.feature.todo.TodoScreen
 
 @Composable
 fun UpcPocketNavHost(
@@ -46,13 +53,46 @@ fun UpcPocketNavHost(
 
     val preferences by container.preferencesRepository.state.collectAsStateWithLifecycle()
     val accountState by container.schoolAccountRepository.state.collectAsStateWithLifecycle()
-    val cardState by container.cardBalanceRepository.uiState.collectAsStateWithLifecycle()
+    val cardBalanceState by container.cardBalanceRepository.uiState.collectAsStateWithLifecycle()
+    val cardWalletState by container.cardWalletRepository.uiState.collectAsStateWithLifecycle()
     val powerState by container.powerRepository.uiState.collectAsStateWithLifecycle()
     val timetableState by container.timetableRepository.uiState.collectAsStateWithLifecycle()
     val librarySeatState by container.librarySeatRepository.uiState.collectAsStateWithLifecycle()
-    val todoState by container.todoRepository.uiState.collectAsStateWithLifecycle()
-    val focusState by container.focusTimerController.state.collectAsStateWithLifecycle()
+    val gradesState by container.gradesRepository.uiState.collectAsStateWithLifecycle()
+    val shiguangState by container.shiguangRepository.uiState.collectAsStateWithLifecycle()
+    val calendarState by container.academicCalendarRepository.uiState.collectAsStateWithLifecycle()
+    val appUpdateState by container.appUpdateChecker.state.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
+
+    var isAutoSyncing by remember { mutableStateOf(false) }
+
+    val triggerSmartSync: (Boolean) -> Unit = { force ->
+        if (!isAutoSyncing) {
+            scope.launch {
+                isAutoSyncing = true
+                try {
+                    val jobs = buildList {
+                        if (accountState.status == AccountStatus.SAVED_UNVERIFIED) {
+                            add(async { container.timetableRepository.refresh() })
+                            if (accountState.isValidStudentId) {
+                                add(async { container.cardBalanceRepository.refresh() })
+                            }
+                            if (force) {
+                                add(async { container.librarySeatRepository.refreshActiveSystem() })
+                            }
+                        }
+                        if (powerState.hasBoundDormitory || powerState.lastReading != null) {
+                            add(async { container.powerRepository.refreshBoundDormitory() })
+                        }
+                    }
+                    jobs.awaitAll()
+                    container.preferencesRepository.setLastAutoSyncEpochMillis(System.currentTimeMillis())
+                } finally {
+                    isAutoSyncing = false
+                }
+            }
+        }
+    }
 
     val isTopLevelRoute = TopLevelDestination.entries.any { it.route == currentRoute }
 
@@ -98,34 +138,35 @@ fun UpcPocketNavHost(
             }
         },
     ) { outerPadding ->
-        val bottomNavPadding = if (isTopLevelRoute) {
-            outerPadding.calculateBottomPadding()
-        } else {
-            0.dp
-        }
+        val bottomNavPadding = if (isTopLevelRoute) outerPadding.calculateBottomPadding() else 0.dp
 
         NavHost(
             navController = navController,
-            startDestination = TopLevelDestination.HOME.route,
+            startDestination = TopLevelDestination.TODAY.route,
             modifier = Modifier.fillMaxSize(),
         ) {
-            composable(TopLevelDestination.HOME.route) {
-                HomeScreen(
-                    campus = preferences.campus,
+            composable(TopLevelDestination.TODAY.route) {
+                TodayScreen(
+                    preferences = preferences,
                     accountState = accountState,
-                    cardState = cardState,
-                    powerState = powerState,
                     timetableState = timetableState,
-                    todoState = todoState,
+                    cardBalanceState = cardBalanceState,
+                    powerState = powerState,
+                    librarySeatState = librarySeatState,
+                    gradesState = gradesState,
+                    isAutoSyncing = isAutoSyncing,
                     bottomNavPadding = bottomNavPadding,
+                    onSmartAutoSync = triggerSmartSync,
                     onOpenSettings = { navController.navigate(AppRoute.SETTINGS) },
                     onOpenSchoolAccount = { navController.navigate(AppRoute.SCHOOL_ACCOUNT) },
                     onOpenTimetableTab = { navigateToTopLevel(TopLevelDestination.TIMETABLE) },
-                    onOpenTodos = { navController.navigate(AppRoute.TODOS) },
-                    onOpenCardBalance = { navController.navigate(AppRoute.CARD_BALANCE) },
+                    onOpenCardWallet = { navController.navigate(AppRoute.CARD_WALLET) },
                     onOpenPower = { navController.navigate(AppRoute.POWER) },
-                    onOpenFreeClassroom = { navController.navigate(AppRoute.FREE_CLASSROOM) },
                     onOpenLibrarySeat = { navController.navigate(AppRoute.LIBRARY_SEAT) },
+                    onOpenGrades = { navController.navigate(AppRoute.GRADES) },
+                    onOpenFreeClassroom = { navController.navigate(AppRoute.FREE_CLASSROOM) },
+                    onOpenShiguang = { navController.navigate(AppRoute.SHIGUANG) },
+                    onOpenAcademicCalendar = { navController.navigate(AppRoute.ACADEMIC_CALENDAR) },
                 )
             }
 
@@ -133,105 +174,83 @@ fun UpcPocketNavHost(
                 TimetableScreen(
                     accountState = accountState,
                     uiState = timetableState,
-                    todoState = todoState,
                     bottomNavPadding = bottomNavPadding,
                     onOpenSchoolAccount = { navController.navigate(AppRoute.SCHOOL_ACCOUNT) },
-                    onRefresh = {
-                        scope.launch { container.timetableRepository.refresh() }
-                    },
+                    onOpenAcademicCalendar = { navController.navigate(AppRoute.ACADEMIC_CALENDAR) },
+                    onRefresh = { scope.launch { container.timetableRepository.refresh() } },
                     onSelectWeek = { term, week ->
                         scope.launch { container.timetableRepository.selectWeek(term, week) }
                     },
                     onAdoptWebViewCookies = { cookies, context ->
-                        scope.launch {
-                            container.timetableRepository.adoptWebViewCookies(cookies, context)
-                        }
+                        scope.launch { container.timetableRepository.adoptWebViewCookies(cookies, context) }
                     },
                     onDismissInteraction = container.timetableRepository::dismissInteractionPrompt,
-                    onClearCache = {
-                        scope.launch { container.timetableRepository.clearLocalCache() }
-                    },
-                    onOpenTodos = { navController.navigate(AppRoute.TODOS) },
-                    onToggleTodoCompleted = { id ->
-                        scope.launch { container.todoRepository.toggleCompleted(id) }
-                    },
-                    onUpsertTodo = { id, title, dueAt, reminderAt ->
-                        scope.launch {
-                            container.todoRepository.upsertTask(id, title, dueAt, reminderAt)
-                        }
-                    },
                 )
             }
 
-            composable(TopLevelDestination.SERVICES.route) {
-                ServicesScreen(
+            composable(TopLevelDestination.CAMPUS.route) {
+                CampusScreen(
                     campus = preferences.campus,
+                    accountState = accountState,
+                    gradesState = gradesState,
+                    shiguangState = shiguangState,
+                    librarySeatState = librarySeatState,
+                    cardBalanceState = cardBalanceState,
+                    powerState = powerState,
                     bottomNavPadding = bottomNavPadding,
                     onSelectCampus = { campus ->
                         scope.launch { container.preferencesRepository.setCampus(campus) }
                     },
-                    onOpenCardBalance = { navController.navigate(AppRoute.CARD_BALANCE) },
-                    onOpenPower = { navController.navigate(AppRoute.POWER) },
-                    onOpenFreeClassroom = { navController.navigate(AppRoute.FREE_CLASSROOM) },
+                    onOpenSettings = { navController.navigate(AppRoute.SETTINGS) },
+                    onOpenGrades = { navController.navigate(AppRoute.GRADES) },
+                    onOpenShiguang = { navController.navigate(AppRoute.SHIGUANG) },
                     onOpenLibrarySeat = { navController.navigate(AppRoute.LIBRARY_SEAT) },
+                    onOpenFreeClassroom = { navController.navigate(AppRoute.FREE_CLASSROOM) },
+                    onOpenCardWallet = { navController.navigate(AppRoute.CARD_WALLET) },
+                    onOpenPower = { navController.navigate(AppRoute.POWER) },
+                    onOpenAcademicCalendar = { navController.navigate(AppRoute.ACADEMIC_CALENDAR) },
                 )
             }
 
-            composable(TopLevelDestination.FOCUS.route) {
-                FocusScreen(
-                    uiState = focusState,
-                    bottomNavPadding = bottomNavPadding,
-                    onSelectMode = { mode ->
-                        scope.launch { container.focusTimerController.selectMode(mode) }
-                    },
-                    onToggleStartPause = {
-                        scope.launch { container.focusTimerController.toggleStartPause() }
-                    },
-                    onReset = {
-                        scope.launch { container.focusTimerController.reset() }
-                    },
-                    onFinishEarly = {
-                        scope.launch { container.focusTimerController.finishEarly() }
-                    },
-                    onClearHistory = {
-                        scope.launch { container.focusTimerController.clearHistory() }
-                    },
-                )
-            }
-
-            composable(AppRoute.TODOS) {
-                TodoScreen(
-                    uiState = todoState,
-                    onBack = { navController.popBackStack() },
-                    onUpsertTask = { id, title, dueAt, reminderAt ->
-                        scope.launch {
-                            container.todoRepository.upsertTask(id, title, dueAt, reminderAt)
-                        }
-                    },
-                    onToggleCompleted = { id ->
-                        scope.launch { container.todoRepository.toggleCompleted(id) }
-                    },
-                    onDeleteTask = { id ->
-                        scope.launch { container.todoRepository.deleteTask(id) }
-                    },
-                    onClearCompleted = {
-                        scope.launch { container.todoRepository.clearCompleted() }
-                    },
-                )
-            }
-
-            composable(AppRoute.CARD_BALANCE) {
-                CardBalanceScreen(
+            composable(AppRoute.GRADES) {
+                GradesScreen(
                     accountState = accountState,
-                    uiState = cardState,
+                    uiState = gradesState,
                     onBack = { navController.popBackStack() },
                     onOpenSchoolAccount = { navController.navigate(AppRoute.SCHOOL_ACCOUNT) },
-                    onRefresh = {
-                        scope.launch { container.cardBalanceRepository.refresh() }
+                    onRefresh = { scope.launch { container.gradesRepository.refresh() } },
+                    onClearCache = { scope.launch { container.gradesRepository.clearCache() } },
+                    onAdoptWebViewCookies = { cookies, context ->
+                        scope.launch { container.gradesRepository.adoptWebViewCookies(cookies, context) }
                     },
-                    onClearCache = {
-                        scope.launch { container.cardBalanceRepository.clearCache() }
+                    onDismissInteraction = container.gradesRepository::dismissInteractionPrompt,
+                )
+            }
+
+            composable(AppRoute.CARD_WALLET) {
+                CardWalletScreen(
+                    accountState = accountState,
+                    balanceState = cardBalanceState,
+                    walletState = cardWalletState,
+                    onBack = { navController.popBackStack() },
+                    onOpenSchoolAccount = { navController.navigate(AppRoute.SCHOOL_ACCOUNT) },
+                    onRefreshBalance = { scope.launch { container.cardBalanceRepository.refresh() } },
+                    onLoadHistory = { month, nextPage ->
+                        scope.launch { container.cardWalletRepository.loadHistory(month, nextPage) }
                     },
+                    onPrepareRecharge = {
+                        scope.launch { container.cardWalletRepository.prepareRecharge() }
+                    },
+                    onSubmitRecharge = { yuan ->
+                        scope.launch { container.cardWalletRepository.submitRecharge(yuan) }
+                    },
+                    onRefreshPendingOrder = {
+                        scope.launch { container.cardWalletRepository.refreshPendingOrderStatus() }
+                    },
+                    onAdoptWebViewUrl = { url, ctx ->
+                        scope.launch { container.cardWalletRepository.adoptWebViewUrl(url, ctx) }
+                    },
+                    onDismissInteraction = container.cardWalletRepository::dismissInteractionPrompt,
                 )
             }
 
@@ -240,15 +259,17 @@ fun UpcPocketNavHost(
                     preferredCampus = preferences.campus,
                     uiState = powerState,
                     onBack = { navController.popBackStack() },
-                    onLoadBuildings = {
-                        scope.launch { container.powerRepository.loadBuildings() }
-                    },
+                    onLoadBuildings = { scope.launch { container.powerRepository.loadBuildings() } },
                     onQuery = { building, room ->
                         scope.launch { container.powerRepository.query(building, room) }
                     },
-                    onClearSaved = {
-                        scope.launch { container.powerRepository.clearSaved() }
+                    onBindDormitory = { building, room ->
+                        scope.launch { container.powerRepository.bindDormitory(building, room) }
                     },
+                    onClearBoundDormitory = {
+                        scope.launch { container.powerRepository.clearBoundDormitory() }
+                    },
+                    onClearSaved = { scope.launch { container.powerRepository.clearSaved() } },
                 )
             }
 
@@ -271,9 +292,7 @@ fun UpcPocketNavHost(
                     onSelectSystem = { tab ->
                         scope.launch { container.librarySeatRepository.selectSystem(tab) }
                     },
-                    onRefresh = {
-                        scope.launch { container.librarySeatRepository.refreshActiveSystem() }
-                    },
+                    onRefresh = { scope.launch { container.librarySeatRepository.refreshActiveSystem() } },
                     onSelectLibseatDate = { date ->
                         scope.launch { container.librarySeatRepository.selectLibseatDate(date) }
                     },
@@ -285,6 +304,20 @@ fun UpcPocketNavHost(
                         scope.launch { container.librarySeatRepository.loadLibseatRoomLayout(room) }
                     },
                     onDismissLibseatRoom = container.librarySeatRepository::dismissLibseatRoomDetail,
+                    onSelectLibseatSeat = { seat ->
+                        scope.launch { container.librarySeatRepository.selectLibseatSeat(seat) }
+                    },
+                    onSelectLibseatStartTime = { option ->
+                        scope.launch { container.librarySeatRepository.selectLibseatStartTime(option) }
+                    },
+                    onSelectLibseatEndTime = container.librarySeatRepository::selectLibseatEndTime,
+                    onDismissLibseatSeatSheet = container.librarySeatRepository::dismissLibseatSeatSheet,
+                    onReserveLibseatSeat = {
+                        scope.launch { container.librarySeatRepository.reserveSelectedLibseatSeat() }
+                    },
+                    onCancelLibseatReservation = { reservation ->
+                        scope.launch { container.librarySeatRepository.cancelLibseatReservation(reservation) }
+                    },
                     onSelectChaoxingDate = { date ->
                         scope.launch { container.librarySeatRepository.selectChaoxingDate(date) }
                     },
@@ -297,7 +330,11 @@ fun UpcPocketNavHost(
                     onSelectChaoxingSeat = { seatNum ->
                         scope.launch { container.librarySeatRepository.loadChaoxingSeatUsedTimes(seatNum) }
                     },
+                    onReserveChaoxingSeat = {
+                        scope.launch { container.librarySeatRepository.reserveChaoxingSeat() }
+                    },
                     onDismissChaoxingRoom = container.librarySeatRepository::dismissChaoxingRoomDetail,
+                    onDismissReservationMessage = container.librarySeatRepository::dismissReservationMessage,
                     onAdoptLibseatUrl = { rawUrl, ctx ->
                         scope.launch { container.librarySeatRepository.adoptLibseatWebViewToken(rawUrl, ctx) }
                     },
@@ -309,12 +346,55 @@ fun UpcPocketNavHost(
                 )
             }
 
+            composable(AppRoute.SHIGUANG) {
+                ShiguangScreen(
+                    accountState = accountState,
+                    uiState = shiguangState,
+                    onBack = { navController.popBackStack() },
+                    onOpenSchoolAccount = { navController.navigate(AppRoute.SCHOOL_ACCOUNT) },
+                    onSelectTab = container.shiguangRepository::selectTab,
+                    onRefresh = { keyword ->
+                        scope.launch { container.shiguangRepository.refresh(keyword) }
+                    },
+                    onLoadPage = { page, mine ->
+                        scope.launch { container.shiguangRepository.loadPage(page, mine) }
+                    },
+                    onOpenDetail = { activity ->
+                        scope.launch { container.shiguangRepository.loadDetail(activity) }
+                    },
+                    onDismissDetail = container.shiguangRepository::dismissDetail,
+                    onAdoptWebViewCookies = { cookies, ctx ->
+                        scope.launch { container.shiguangRepository.adoptWebViewCookies(cookies, ctx) }
+                    },
+                    onDismissInteraction = container.shiguangRepository::dismissInteractionPrompt,
+                )
+            }
+
+            composable(AppRoute.ACADEMIC_CALENDAR) {
+                AcademicCalendarScreen(
+                    uiState = calendarState,
+                    onBack = { navController.popBackStack() },
+                    onLoadLatest = {
+                        scope.launch { container.academicCalendarRepository.loadLatestIfEmpty() }
+                    },
+                    onRefresh = {
+                        scope.launch { container.academicCalendarRepository.refresh() }
+                    },
+                    onSelectArticle = { article ->
+                        scope.launch { container.academicCalendarRepository.selectArticle(article) }
+                    },
+                )
+            }
+
             composable(AppRoute.SETTINGS) {
                 SettingsScreen(
                     preferences = preferences,
                     accountState = accountState,
+                    powerState = powerState,
+                    appUpdateState = appUpdateState,
                     onBack = { navController.popBackStack() },
                     onOpenSchoolAccount = { navController.navigate(AppRoute.SCHOOL_ACCOUNT) },
+                    onOpenPower = { navController.navigate(AppRoute.POWER) },
                     onOpenAbout = { navController.navigate(AppRoute.ABOUT) },
                     onSelectCampus = { campus ->
                         scope.launch { container.preferencesRepository.setCampus(campus) }
@@ -322,9 +402,16 @@ fun UpcPocketNavHost(
                     onSelectTheme = { theme ->
                         scope.launch { container.preferencesRepository.setTheme(theme) }
                     },
+                    onSelectColorSeed = { seed ->
+                        scope.launch { container.preferencesRepository.setColorSeed(seed) }
+                    },
                     onToggleDynamicColor = { enabled ->
                         scope.launch { container.preferencesRepository.setDynamicColorEnabled(enabled) }
                     },
+                    onCheckForUpdates = {
+                        scope.launch { container.appUpdateChecker.checkForUpdates() }
+                    },
+                    onDismissUpdate = container.appUpdateChecker::dismiss,
                 )
             }
 
@@ -335,16 +422,12 @@ fun UpcPocketNavHost(
                     onSaveAccount = { loginName, password ->
                         container.schoolAccountRepository.save(loginName, password)
                     },
-                    onClearAccount = {
-                        container.schoolAccountRepository.clear()
-                    },
+                    onClearAccount = { container.schoolAccountRepository.clear() },
                 )
             }
 
             composable(AppRoute.ABOUT) {
-                AboutScreen(
-                    onBack = { navController.popBackStack() },
-                )
+                AboutScreen(onBack = { navController.popBackStack() })
             }
         }
     }

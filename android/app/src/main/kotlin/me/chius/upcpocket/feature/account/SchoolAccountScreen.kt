@@ -129,7 +129,7 @@ fun SchoolAccountScreen(
             onDismissRequest = { showClearDialog = false },
             title = { Text("删除学校账号？") },
             text = {
-                Text("将清除本机加密保存的学校账号与密码，并递增账号代次以使关联业务会话失效。不会删除本地待办与专注设置。")
+                Text("将清除本机加密保存的学校账号与密码，并递增账号代次以使关联业务会话失效。")
             },
             confirmButton = {
                 TextButton(

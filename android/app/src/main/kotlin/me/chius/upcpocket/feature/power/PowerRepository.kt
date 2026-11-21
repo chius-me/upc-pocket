@@ -33,6 +33,8 @@ data class SavedPowerReading(
 internal data class PersistedPowerState(
     val draftBuilding: String = "",
     val draftRoom: String = "",
+    val boundBuilding: String = "",
+    val boundRoom: String = "",
     val buildings: List<String> = emptyList(),
     val lastReading: SavedPowerReading? = null,
 )
@@ -40,13 +42,17 @@ internal data class PersistedPowerState(
 data class PowerUiState(
     val building: String = "",
     val room: String = "",
+    val boundBuilding: String = "",
+    val boundRoom: String = "",
     val buildings: List<String> = emptyList(),
     val lastReading: SavedPowerReading? = null,
     val candidates: List<ElectricityProtocol.Candidate> = emptyList(),
     val isLoadingBuildings: Boolean = false,
     val isQuerying: Boolean = false,
     val errorMessage: String? = null,
-)
+) {
+    val hasBoundDormitory: Boolean get() = boundBuilding.isNotBlank() && boundRoom.isNotBlank()
+}
 
 class PowerRepository internal constructor(
     private val directory: File,
@@ -73,12 +79,42 @@ class PowerRepository internal constructor(
         val persisted = fileMutex.withLock { readPersistedOrNull() } ?: return@withContext
         _uiState.update {
             it.copy(
-                building = persisted.draftBuilding,
-                room = persisted.draftRoom,
+                building = persisted.draftBuilding.ifBlank { persisted.boundBuilding },
+                room = persisted.draftRoom.ifBlank { persisted.boundRoom },
+                boundBuilding = persisted.boundBuilding,
+                boundRoom = persisted.boundRoom,
                 buildings = persisted.buildings,
                 lastReading = persisted.lastReading,
             )
         }
+    }
+
+    suspend fun bindDormitory(buildingInput: String, roomInput: String) = withContext(ioDispatcher) {
+        val building = buildingInput.trim()
+        val room = roomInput.trim()
+        if (building.isEmpty() || room.isEmpty()) return@withContext
+        _uiState.update {
+            it.copy(
+                building = building,
+                room = room,
+                boundBuilding = building,
+                boundRoom = room,
+            )
+        }
+        persistCurrentState()
+    }
+
+    suspend fun clearBoundDormitory() = withContext(ioDispatcher) {
+        _uiState.update { it.copy(boundBuilding = "", boundRoom = "") }
+        persistCurrentState()
+    }
+
+    suspend fun refreshBoundDormitory(): Result<ElectricityProtocol.Outcome>? {
+        val current = _uiState.value
+        val targetBuilding = current.boundBuilding.ifBlank { current.lastReading?.building.orEmpty() }
+        val targetRoom = current.boundRoom.ifBlank { current.lastReading?.room.orEmpty() }
+        if (targetBuilding.isBlank() || targetRoom.isBlank()) return null
+        return query(targetBuilding, targetRoom)
     }
 
     suspend fun updateDraft(building: String, room: String) = withContext(ioDispatcher) {
@@ -211,6 +247,8 @@ class PowerRepository internal constructor(
         val persisted = PersistedPowerState(
             draftBuilding = current.building,
             draftRoom = current.room,
+            boundBuilding = current.boundBuilding,
+            boundRoom = current.boundRoom,
             buildings = current.buildings,
             lastReading = current.lastReading,
         )

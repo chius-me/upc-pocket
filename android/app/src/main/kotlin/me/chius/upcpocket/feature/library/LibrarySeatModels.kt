@@ -134,6 +134,8 @@ data class LibraryReservation(
     val location: String,
     val status: String,
 ) {
+    val cancellable: Boolean get() = status == "RESERVE"
+
     val statusLabel: String
         get() = when (status) {
             "RESERVE" -> "已预约"
@@ -146,6 +148,14 @@ data class LibraryReservation(
             "STOP" -> "结束使用"
             else -> status.ifBlank { "未知状态" }
         }
+}
+
+data class LibraryTimeOption(
+    val id: String,
+    val value: String,
+) {
+    val normalizedId: String
+        get() = if (id.equals("now", ignoreCase = true) || id == "-1") "-1" else id
 }
 
 object LibrarySeatStatus {
@@ -241,6 +251,20 @@ data class ChaoxingTimeInterval(
         get() = "${formatClockMinute(startMinute)}–${formatClockMinute(endMinute)}"
 }
 
+data class ChaoxingSelectSecrets(
+    val submitEnc: String,
+    val wfwEngineEnc: String,
+    val riskCheckRequired: Boolean,
+)
+
+sealed interface ChaoxingReservationResult {
+    data class Success(val seatNum: String, val day: String) : ChaoxingReservationResult
+    data class Rejected(val message: String) : ChaoxingReservationResult
+    data class InteractionRequired(val message: String) : ChaoxingReservationResult
+    /** HTTP POST reached upstream but final status could not be confirmed; never auto-retry. */
+    data class Unknown(val message: String) : ChaoxingReservationResult
+}
+
 open class ChaoxingException(
     message: String,
     val code: String = "chaoxing_protocol",
@@ -288,6 +312,15 @@ data class LibrarySeatUiState(
     val libseatRooms: List<LibraryRoom> = emptyList(),
     val libseatSelectedRoom: LibraryRoom? = null,
     val libseatSelectedRoomLayout: LibrarySeatLayout? = null,
+    val libseatSelectedSeat: LibrarySeat? = null,
+    val libseatStartTimes: List<LibraryTimeOption> = emptyList(),
+    val libseatEndTimes: List<LibraryTimeOption> = emptyList(),
+    val libseatSelectedStart: LibraryTimeOption? = null,
+    val libseatSelectedEnd: LibraryTimeOption? = null,
+    val isLoadingSeatTimes: Boolean = false,
+    val isSubmittingReservation: Boolean = false,
+    val cancellingReservationId: String? = null,
+    val reservationMessage: String? = null,
     val libseatCurrentReservations: List<LibraryReservation> = emptyList(),
     val libseatHistoryReservations: List<LibraryReservation> = emptyList(),
     val chaoxingAvailableDates: List<String> = emptyList(),
@@ -300,6 +333,7 @@ data class LibrarySeatUiState(
     val chaoxingUsedSeatNums: Set<String> = emptySet(),
     val chaoxingSelectedSeatNum: String? = null,
     val chaoxingSelectedSeatUsedTimes: List<ChaoxingTimeInterval> = emptyList(),
+    val chaoxingSubmissionUnknownKey: String? = null,
 )
 
 fun formatClockMinute(minute: Int): String {

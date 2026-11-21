@@ -50,8 +50,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.unit.dp
 import java.time.LocalDate
+import java.time.LocalTime
+import java.time.ZoneId
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+import me.chius.upcpocket.feature.timetable.TimetableSchedule
 import me.chius.upcpocket.core.designsystem.components.ExpressiveGroupedCard
 import me.chius.upcpocket.core.designsystem.components.ExpressiveSectionHeader
 import me.chius.upcpocket.core.designsystem.components.ExpressiveStatusBadge
@@ -73,7 +76,13 @@ fun FreeClassroomScreen(
     }
     var dateOffsetDays by remember { mutableStateOf(0L) }
     var selectedBuilding by remember { mutableStateOf("全部") }
-    var selectedPeriods by remember { mutableStateOf(ClassroomPeriodGroup.MORNING.periods) }
+    var selectedPeriods by remember {
+        val now = LocalTime.now(ZoneId.of("Asia/Shanghai"))
+        val currentPeriod = TimetableSchedule.currentOrNextPeriod(now.hour * 60 + now.minute)
+        val defaultGroup = ClassroomPeriodGroup.entries.firstOrNull { currentPeriod in it.periods }
+            ?: ClassroomPeriodGroup.MORNING
+        mutableStateOf(defaultGroup.periods)
+    }
     var queryMode by remember { mutableStateOf(ClassroomQueryMode.PRESET) }
     var showCustomPeriods by remember { mutableStateOf(false) }
     var zhuoyueFilter by remember { mutableStateOf(ZhuoyueWingFilter.ALL) }

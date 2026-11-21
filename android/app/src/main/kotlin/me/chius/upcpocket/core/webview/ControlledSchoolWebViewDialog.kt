@@ -201,6 +201,23 @@ fun ControlledSchoolWebViewDialog(
                                 ): Boolean {
                                     val url = request.url?.toString().orEmpty()
                                     val method = request.method ?: "GET"
+                                    val upgradedHttp = if (method.equals("GET", ignoreCase = true) && request.isForMainFrame) {
+                                        ControlledWebViewContract.upgradeCallbackHttpToHttpsIfAllowed(
+                                            rawUrl = url,
+                                            scopeHosts = scopeHosts,
+                                        )
+                                    } else {
+                                        null
+                                    }
+                                    if (upgradedHttp != null) {
+                                        if (allowCompletionWithoutCookies) {
+                                            tryExtractCompletionCookies(upgradedHttp)
+                                        }
+                                        if (!capturedCookiesSent) {
+                                            view.loadUrl(upgradedHttp)
+                                        }
+                                        return true
+                                    }
                                     val decision = ControlledWebViewContract.inspectNavigation(
                                         rawUrl = url,
                                         method = method,

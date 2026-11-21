@@ -145,4 +145,50 @@ class ControlledWebViewContractTest {
         assertFalse(context.isStillValidFor(initial.copy(generation = 2L)))
         assertFalse(context.isStillValidFor(initial.copy(accountId = null)))
     }
+
+    @Test
+    fun `allows jwxt card and shiguang scopes and upgrades exact http callbacks to https`() {
+        assertEquals(
+            Decision.ALLOW,
+            ControlledWebViewContract.inspectNavigation(
+                "https://jwxt.upc.edu.cn/jsxsd/kscj/cjcx_list",
+                scopeHosts = ControlledWebViewContract.jwxtScopeHosts,
+            ),
+        )
+        assertEquals(
+            Decision.ALLOW,
+            ControlledWebViewContract.inspectNavigation(
+                "https://mb-xyk.upc.edu.cn/plat/?name=loginTransit",
+                scopeHosts = ControlledWebViewContract.cardScopeHosts,
+            ),
+        )
+        assertEquals(
+            Decision.ALLOW,
+            ControlledWebViewContract.inspectNavigation(
+                "https://dekt.upc.edu.cn/actvMng/actvMngFront!jumpActvCampListPageForWeb.action",
+                scopeHosts = ControlledWebViewContract.shiguangScopeHosts,
+            ),
+        )
+        assertEquals(
+            "https://jwxt.upc.edu.cn/sso.jsp?ticket=ST-1",
+            ControlledWebViewContract.upgradeCallbackHttpToHttpsIfAllowed(
+                "http://jwxt.upc.edu.cn/sso.jsp?ticket=ST-1",
+                scopeHosts = ControlledWebViewContract.jwxtScopeHosts,
+            ),
+        )
+        assertEquals(
+            "https://dekt.upc.edu.cn/caslogin.jsp?ticket=ST-2",
+            ControlledWebViewContract.upgradeCallbackHttpToHttpsIfAllowed(
+                "http://dekt.upc.edu.cn/caslogin.jsp?ticket=ST-2",
+                scopeHosts = ControlledWebViewContract.shiguangScopeHosts,
+            ),
+        )
+        assertEquals(
+            null,
+            ControlledWebViewContract.upgradeCallbackHttpToHttpsIfAllowed(
+                "http://jhzf.upc.edu.cn/test",
+                scopeHosts = ControlledWebViewContract.cardScopeHosts,
+            ),
+        )
+    }
 }

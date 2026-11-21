@@ -33,8 +33,29 @@ data class UpcCasService(
     val callbackPath: String,
     val callbackParameterNames: Set<String>,
     val maxRedirectHops: Int = 8,
+    val upgradeHttpCallbackToHttps: Boolean = false,
     val isAllowedCallbackRedirect: (URI) -> Boolean = { true },
 ) {
+    fun upgradeIfNeeded(uri: URI): URI {
+        if (upgradeHttpCallbackToHttps &&
+            uri.scheme.equals("http", ignoreCase = true) &&
+            uri.host?.lowercase(Locale.ROOT) == callbackHost.lowercase(Locale.ROOT) &&
+            uri.port in setOf(-1, 80) &&
+            uri.rawUserInfo == null &&
+            uri.rawFragment == null
+        ) {
+            return URI(
+                "https",
+                null,
+                uri.host.lowercase(Locale.ROOT),
+                -1,
+                uri.rawPath,
+                uri.rawQuery,
+                null,
+            )
+        }
+        return uri
+    }
     fun isCasLoginUrl(uri: URI): Boolean {
         if (!uri.scheme.equals("https", ignoreCase = true) ||
             uri.host?.lowercase(Locale.ROOT) != casHost.lowercase(Locale.ROOT) ||
@@ -244,16 +265,18 @@ class UpcCasLogin(
             if (postResponse.statusCode in 300..399) {
                 val location = postResponse.location
                     ?: return CasCallbackResult.UpstreamError("CAS 认证重定向缺少目标地址")
-                val targetUri = resolveHttpUri(validatedAction, location)
-                    ?: return CasCallbackResult.UpstreamError("CAS 认证重定向目标无效")
+                val resolvedTarget = service.upgradeIfNeeded(
+                    resolveHttpUri(validatedAction, location)
+                        ?: return CasCallbackResult.UpstreamError("CAS 认证重定向目标无效"),
+                )
 
                 return when {
-                    service.isCasLoginUrl(targetUri) -> classifyReturnedCasPage(
+                    service.isCasLoginUrl(resolvedTarget) -> classifyReturnedCasPage(
                         jar = jar,
-                        targetUrl = targetUri.toString(),
+                        targetUrl = resolvedTarget.toString(),
                         interactionUrl = casUrl,
                     )
-                    service.isCallbackUrl(targetUri) -> CasCallbackResult.Callback(targetUri)
+                    service.isCallbackUrl(resolvedTarget) -> CasCallbackResult.Callback(resolvedTarget)
                     else -> CasCallbackResult.UpstreamError("CAS 回调目标未通过域与参数白名单校验")
                 }
             }
@@ -341,6 +364,7 @@ class UpcCasLogin(
     ): CasLoginResult {
         var current = startUri
         repeat(service.maxRedirectHops) {
+            current = service.upgradeIfNeeded(current)
             if (!isAllowedAppHop(current)) {
                 return CasLoginResult.UpstreamError("业务回调跳转超出了允许的官方路径")
             }
@@ -349,8 +373,10 @@ class UpcCasLogin(
             if (response.statusCode in 300..399) {
                 val location = response.location
                     ?: return CasLoginResult.UpstreamError("业务回调重定向缺少 Location")
-                current = resolveHttpUri(currentUrl, location)
-                    ?: return CasLoginResult.UpstreamError("业务回调重定向地址非法")
+                current = service.upgradeIfNeeded(
+                    resolveHttpUri(currentUrl, location)
+                        ?: return CasLoginResult.UpstreamError("业务回调重定向地址非法"),
+                )
                 return@repeat
             }
             if (response.statusCode == 401 || response.statusCode == 403) {
@@ -398,7 +424,7 @@ class UpcCasLogin(
         return if (service.isCasLoginUrl(actionUri)) actionUri.toString() else null
     }
 
-    private companion object {
+    internal companion object {
         const val MAX_CAS_EXECUTION_CHARS = 64 * 1024
         val EXPLICIT_CREDENTIAL_ERRORS = setOf(
             "用户名或密码错误",
@@ -437,6 +463,12 @@ class UpcCasLogin(
                 execution.isNotBlank() &&
                 execution.length <= MAX_CAS_EXECUTION_CHARS &&
                 execution.none { it <= ' ' || it == '\u007f' }
+
+        fun isExplicitCasCredentialRejectionPublic(errorText: String?): Boolean =
+            isExplicitCasCredentialRejection(errorText)
+
+        fun parseCasLoginFormPublic(html: String): CasLoginForm =
+            parseCasLoginForm(html)
 
         fun isExplicitCasCredentialRejection(errorText: String?): Boolean {
             val normalized = errorText.orEmpty().replace(CAS_WHITESPACE, "")

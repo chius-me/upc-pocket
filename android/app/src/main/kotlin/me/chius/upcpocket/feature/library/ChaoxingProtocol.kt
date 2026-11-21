@@ -1,11 +1,13 @@
 package me.chius.upcpocket.feature.library
 
+import java.security.MessageDigest
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
@@ -14,8 +16,7 @@ import kotlinx.serialization.json.doubleOrNull
 import kotlinx.serialization.json.intOrNull
 
 /**
- * Strict read-only protocol parsers for `office.chaoxing.com` (`seat` and `seatengine`).
- * Reservation submission endpoints are intentionally omitted.
+ * Protocol parsers and reservation helpers for `office.chaoxing.com` (`seat` and `seatengine`).
  */
 object ChaoxingProtocol {
     private val zone: ZoneId = ZoneId.of("Asia/Shanghai")
@@ -284,4 +285,166 @@ object ChaoxingProtocol {
         }
         return null
     }
+
+    private val SUBMIT_ENC_REGEX = Regex(
+        """id\s*=\s*["']submit_enc["'][^>]*value\s*=\s*["']([^"']+)["']""",
+        setOf(RegexOption.IGNORE_CASE),
+    )
+    private val VALUE_FIRST_SUBMIT_ENC_REGEX = Regex(
+        """value\s*=\s*["']([^"']+)["'][^>]*id\s*=\s*["']submit_enc["']""",
+        setOf(RegexOption.IGNORE_CASE),
+    )
+    private val WFW_ENGINE_ENC_REGEX = Regex(
+        """wfwEngineEnc\s*=\s*['"]([^'"]*)['"]""",
+        setOf(RegexOption.IGNORE_CASE),
+    )
+    private val RISK_CHECK_REGEX = Regex(
+        """riskCheckOpen\s*[:=]\s*true""",
+        setOf(RegexOption.IGNORE_CASE),
+    )
+
+    fun parseSelectPage(html: String): ChaoxingSelectSecrets {
+        val submit = SUBMIT_ENC_REGEX.find(html)?.groupValues?.get(1)
+            ?: VALUE_FIRST_SUBMIT_ENC_REGEX.find(html)?.groupValues?.get(1)
+            ?: throw ChaoxingException("选座页缺少 submit_enc", "chaoxing_protocol")
+        if (submit.isBlank() || submit.length > 512) {
+            throw ChaoxingException("选座页 submit_enc 不可用", "chaoxing_protocol")
+        }
+        return ChaoxingSelectSecrets(
+            submitEnc = submit,
+            wfwEngineEnc = WFW_ENGINE_ENC_REGEX.find(html)?.groupValues?.get(1).orEmpty(),
+            riskCheckRequired = RISK_CHECK_REGEX.containsMatchIn(html),
+        )
+    }
+
+    fun enc(
+        kind: ChaoxingSeatKind,
+        deptIdEnc: String,
+        roomId: Int,
+        day: String,
+        startTime: String,
+        endTime: String,
+        seatNum: String,
+        submitEnc: String,
+        wfwEngineEnc: String,
+    ): String {
+        val params = orderedParams(
+            kind = kind,
+            deptIdEnc = deptIdEnc,
+            roomId = roomId,
+            day = day,
+            startTime = startTime,
+            endTime = endTime,
+            seatNum = seatNum,
+            captcha = "",
+            wyToken = "",
+            wfwEngineEnc = wfwEngineEnc,
+        )
+        val canonical = buildString {
+            params.forEach { (key, value) ->
+                append('[').append(key).append('=').append(value).append(']')
+            }
+            append('[').append(submitEnc).append(']')
+        }
+        return MessageDigest.getInstance("MD5")
+            .digest(canonical.toByteArray(Charsets.UTF_8))
+            .joinToString("") { "%02x".format(it.toInt() and 0xff) }
+    }
+
+    fun submitParams(
+        kind: ChaoxingSeatKind,
+        deptIdEnc: String,
+        roomId: Int,
+        day: String,
+        startTime: String,
+        endTime: String,
+        seatNum: String,
+        submitEnc: String,
+        wfwEngineEnc: String,
+    ): LinkedHashMap<String, String> {
+        val params = orderedParams(
+            kind = kind,
+            deptIdEnc = deptIdEnc,
+            roomId = roomId,
+            day = day,
+            startTime = startTime,
+            endTime = endTime,
+            seatNum = seatNum,
+            captcha = "",
+            wyToken = "",
+            wfwEngineEnc = wfwEngineEnc,
+        )
+        params["enc"] = enc(
+            kind = kind,
+            deptIdEnc = deptIdEnc,
+            roomId = roomId,
+            day = day,
+            startTime = startTime,
+            endTime = endTime,
+            seatNum = seatNum,
+            submitEnc = submitEnc,
+            wfwEngineEnc = wfwEngineEnc,
+        )
+        return params
+    }
+
+    private fun orderedParams(
+        kind: ChaoxingSeatKind,
+        deptIdEnc: String,
+        roomId: Int,
+        day: String,
+        startTime: String,
+        endTime: String,
+        seatNum: String,
+        captcha: String,
+        wyToken: String,
+        wfwEngineEnc: String,
+    ): LinkedHashMap<String, String> = linkedMapOf<String, String>().apply {
+        if (kind == ChaoxingSeatKind.SEAT) put("deptIdEnc", deptIdEnc)
+        put("roomId", roomId.toString())
+        put("day", day)
+        put("startTime", startTime)
+        put("endTime", endTime)
+        put("seatNum", seatNum)
+        put("captcha", captcha)
+        put("wyToken", wyToken)
+        if (kind == ChaoxingSeatKind.SEATENGINE) put("wfwEngineEnc", wfwEngineEnc)
+    }
+
+    fun parseSubmitResponse(body: String, seatNum: String, day: String): ChaoxingReservationResult {
+        val root = parseObject(body) ?: return unknownChaoxingSubmission()
+        val flag = root["success"] as? JsonPrimitive ?: return unknownChaoxingSubmission()
+        if (flag.isString) return unknownChaoxingSubmission()
+        val success = flag.booleanOrNull ?: return unknownChaoxingSubmission()
+        val message = if ("msg" in root) {
+            val raw = root["msg"] as? JsonPrimitive ?: return unknownChaoxingSubmission()
+            if (!raw.isString) return unknownChaoxingSubmission()
+            raw.contentOrNull?.trim() ?: return unknownChaoxingSubmission()
+        } else null
+        val data = root["data"]
+        if (data != null && data != JsonNull && data !is JsonObject) return unknownChaoxingSubmission()
+        if (data is JsonObject && "seatReserve" in data) {
+            val reserve = data["seatReserve"] as? JsonObject ?: return unknownChaoxingSubmission()
+            for ((key, expected) in listOf("seatNum" to seatNum, "day" to day)) {
+                if (key in reserve) {
+                    val value = reserve[key] as? JsonPrimitive ?: return unknownChaoxingSubmission()
+                    if (!value.isString || value.contentOrNull != expected) return unknownChaoxingSubmission()
+                }
+            }
+        }
+        if (success) return ChaoxingReservationResult.Success(seatNum, day)
+        if (message.isNullOrBlank()) return unknownChaoxingSubmission()
+        return if (message.contains("验证码") ||
+            message.contains("安全验证") ||
+            message.contains("captcha", ignoreCase = true)
+        ) {
+            ChaoxingReservationResult.InteractionRequired("学校要求安全验证；请在官方页完成本次预约。")
+        } else {
+            ChaoxingReservationResult.Rejected(message)
+        }
+    }
+
+    internal fun unknownChaoxingSubmission() = ChaoxingReservationResult.Unknown(
+        "提交结果未知；请到学校记录核对，勿重复提交。",
+    )
 }

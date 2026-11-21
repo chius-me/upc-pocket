@@ -80,6 +80,8 @@ fun PowerScreen(
     onBack: () -> Unit,
     onLoadBuildings: () -> Unit,
     onQuery: (building: String, room: String) -> Unit,
+    onBindDormitory: (building: String, room: String) -> Unit,
+    onClearBoundDormitory: () -> Unit,
     onClearSaved: () -> Unit,
 ) {
     val context = LocalContext.current
@@ -217,15 +219,23 @@ fun PowerScreen(
                         "唐岛湾宿舍剩余电量"
                     }
                     val subtitle = if (reading != null) {
-                        "${reading.building} · ${reading.room} · 查询于 ${formatTime(reading.fetchedAtEpochMillis)}"
+                        "${reading.building} · ${reading.room} · 更新于 ${formatTime(reading.fetchedAtEpochMillis)}"
+                    } else if (uiState.hasBoundDormitory) {
+                        "已绑定常用宿舍：${uiState.boundBuilding} · ${uiState.boundRoom}"
                     } else {
-                        "选择楼号并输入精确房间号；命中多间时由你主动确认，绝不代猜。"
+                        "选择楼号与房间号查询电量，可绑定到今日首页自动同步。"
+                    }
+                    val badge = when {
+                        uiState.isQuerying -> "查询中"
+                        uiState.hasBoundDormitory -> "已绑定"
+                        reading != null -> "已保存"
+                        else -> null
                     }
                     ExpressiveHeroCard(
                         title = title,
                         subtitle = subtitle,
                         icon = Icons.Rounded.Bolt,
-                        badgeText = if (uiState.isQuerying) "查询中" else if (reading != null) "已保存" else "只读",
+                        badgeText = badge,
                         modifier = Modifier.padding(bottom = 16.dp),
                     )
                 }
@@ -366,6 +376,24 @@ fun PowerScreen(
                                     }
                                 }
                             }
+
+                            val isCurrentlyBound = uiState.hasBoundDormitory &&
+                                uiState.boundBuilding == buildingInput.trim() &&
+                                uiState.boundRoom == roomInput.trim()
+                            if (buildingInput.isNotBlank() && roomInput.isNotBlank()) {
+                                OutlinedButton(
+                                    onClick = {
+                                        if (isCurrentlyBound) {
+                                            onClearBoundDormitory()
+                                        } else {
+                                            onBindDormitory(buildingInput, roomInput)
+                                        }
+                                    },
+                                    modifier = Modifier.fillMaxWidth(),
+                                ) {
+                                    Text(if (isCurrentlyBound) "已绑定到今日首页（点击解绑）" else "设为我的常用宿舍（首页自动同步）")
+                                }
+                            }
                         }
                     }
                 }
@@ -374,7 +402,6 @@ fun PowerScreen(
                     item {
                         ExpressiveSectionHeader(
                             title = "命中多个候选房间，请选择确切房间",
-                            subtitle = "学校页面按模糊匹配返回，应用不会替你猜测",
                             modifier = Modifier.padding(bottom = 6.dp),
                         )
                     }
@@ -394,15 +421,6 @@ fun PowerScreen(
                             modifier = if (isLast) Modifier.padding(bottom = 18.dp) else Modifier,
                         )
                     }
-                }
-
-                item {
-                    ExpressiveListRow(
-                        title = "只读与网络边界说明",
-                        subtitle = "dfcz.upc.edu.cn 仅提供 HTTP 公开查询，不发送学校账号密码或做充值写操作。",
-                        leadingIcon = Icons.Rounded.Security,
-                        position = GroupedCardPosition.SINGLE,
-                    )
                 }
             }
         }

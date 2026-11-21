@@ -105,6 +105,14 @@ class UpcCasCookieJar(
     }
 
     @Synchronized
+    fun clearHost(host: String) {
+        val normalizedHost = host.lowercase(Locale.ROOT).trimEnd('.')
+        entries.removeAll {
+            it.domain == normalizedHost || normalizedHost.endsWith(".${it.domain}")
+        }
+    }
+
+    @Synchronized
     fun clear() {
         entries.clear()
     }

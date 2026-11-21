@@ -88,7 +88,7 @@ fun AboutScreen(
             item {
                 ExpressiveListRow(
                     title = "非学校官方客户端",
-                    subtitle = "校园查询直接访问对应学校接口，不经本项目自建账号服务器或数据中转。",
+                    subtitle = "所有校园查询与业务直连对应学校系统，账号密文经 Android Keystore 加密并仅保存在 noBackupFilesDir，不上传云备份。",
                     leadingIcon = Icons.Rounded.VerifiedUser,
                     position = GroupedCardPosition.TOP,
                 )

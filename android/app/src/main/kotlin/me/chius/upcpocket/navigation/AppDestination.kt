@@ -1,14 +1,12 @@
 package me.chius.upcpocket.navigation
 
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.CalendarMonth
+import androidx.compose.material.icons.outlined.CalendarToday
 import androidx.compose.material.icons.outlined.GridView
-import androidx.compose.material.icons.outlined.Home
-import androidx.compose.material.icons.outlined.Timer
-import androidx.compose.material.icons.rounded.CalendarMonth
+import androidx.compose.material.icons.outlined.Today
+import androidx.compose.material.icons.rounded.CalendarToday
 import androidx.compose.material.icons.rounded.GridView
-import androidx.compose.material.icons.rounded.Home
-import androidx.compose.material.icons.rounded.Timer
+import androidx.compose.material.icons.rounded.Today
 import androidx.compose.ui.graphics.vector.ImageVector
 
 enum class TopLevelDestination(
@@ -17,29 +15,23 @@ enum class TopLevelDestination(
     val selectedIcon: ImageVector,
     val unselectedIcon: ImageVector,
 ) {
-    HOME(
-        route = "home",
-        label = "首页",
-        selectedIcon = Icons.Rounded.Home,
-        unselectedIcon = Icons.Outlined.Home,
+    TODAY(
+        route = "today",
+        label = "今日",
+        selectedIcon = Icons.Rounded.Today,
+        unselectedIcon = Icons.Outlined.Today,
     ),
     TIMETABLE(
         route = "timetable",
         label = "课表",
-        selectedIcon = Icons.Rounded.CalendarMonth,
-        unselectedIcon = Icons.Outlined.CalendarMonth,
+        selectedIcon = Icons.Rounded.CalendarToday,
+        unselectedIcon = Icons.Outlined.CalendarToday,
     ),
-    SERVICES(
-        route = "services",
-        label = "服务",
+    CAMPUS(
+        route = "campus",
+        label = "校园",
         selectedIcon = Icons.Rounded.GridView,
         unselectedIcon = Icons.Outlined.GridView,
-    ),
-    FOCUS(
-        route = "focus",
-        label = "专注",
-        selectedIcon = Icons.Rounded.Timer,
-        unselectedIcon = Icons.Outlined.Timer,
     ),
 }
 
@@ -47,9 +39,11 @@ object AppRoute {
     const val SETTINGS = "settings"
     const val SCHOOL_ACCOUNT = "school_account"
     const val ABOUT = "about"
-    const val CARD_BALANCE = "card_balance"
-    const val POWER = "power"
-    const val FREE_CLASSROOM = "free_classroom"
+    const val GRADES = "grades"
+    const val CARD_WALLET = "card_wallet"
     const val LIBRARY_SEAT = "library_seat"
-    const val TODOS = "todos"
+    const val FREE_CLASSROOM = "free_classroom"
+    const val POWER = "power"
+    const val SHIGUANG = "shiguang"
+    const val ACADEMIC_CALENDAR = "academic_calendar"
 }

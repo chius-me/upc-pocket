@@ -6,6 +6,7 @@ import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import java.io.File
 import kotlinx.coroutines.CoroutineDispatcher
@@ -17,12 +18,15 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import me.chius.upcpocket.core.model.CampusPreference
+import me.chius.upcpocket.core.model.ColorSeed
 import me.chius.upcpocket.core.model.ThemePreference
 
 data class AppPreferencesState(
     val campus: CampusPreference = CampusPreference.ALL,
     val theme: ThemePreference = ThemePreference.SYSTEM,
-    val dynamicColorEnabled: Boolean = true,
+    val colorSeed: ColorSeed = ColorSeed.OCEAN_BLUE,
+    val dynamicColorEnabled: Boolean = false,
+    val lastAutoSyncEpochMillis: Long = 0L,
 )
 
 class AppPreferencesRepository internal constructor(
@@ -48,7 +52,9 @@ class AppPreferencesRepository internal constructor(
             AppPreferencesState(
                 campus = CampusPreference.fromStorageKey(prefs[KEY_CAMPUS]),
                 theme = ThemePreference.fromStorageKey(prefs[KEY_THEME]),
-                dynamicColorEnabled = prefs[KEY_DYNAMIC_COLOR] ?: true,
+                colorSeed = ColorSeed.fromStorageKey(prefs[KEY_COLOR_SEED]),
+                dynamicColorEnabled = prefs[KEY_DYNAMIC_COLOR] ?: false,
+                lastAutoSyncEpochMillis = prefs[KEY_LAST_AUTO_SYNC] ?: 0L,
             )
         }
         .stateIn(
@@ -69,15 +75,29 @@ class AppPreferencesRepository internal constructor(
         }
     }
 
+    suspend fun setColorSeed(seed: ColorSeed) {
+        dataStore.edit { prefs ->
+            prefs[KEY_COLOR_SEED] = seed.storageKey
+        }
+    }
+
     suspend fun setDynamicColorEnabled(enabled: Boolean) {
         dataStore.edit { prefs ->
             prefs[KEY_DYNAMIC_COLOR] = enabled
         }
     }
 
+    suspend fun setLastAutoSyncEpochMillis(epochMillis: Long) {
+        dataStore.edit { prefs ->
+            prefs[KEY_LAST_AUTO_SYNC] = epochMillis
+        }
+    }
+
     private companion object {
         val KEY_CAMPUS = stringPreferencesKey("campus_preference")
         val KEY_THEME = stringPreferencesKey("theme_preference")
+        val KEY_COLOR_SEED = stringPreferencesKey("color_seed")
         val KEY_DYNAMIC_COLOR = booleanPreferencesKey("dynamic_color_enabled")
+        val KEY_LAST_AUTO_SYNC = longPreferencesKey("last_auto_sync_epoch_ms")
     }
 }

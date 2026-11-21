@@ -2,53 +2,39 @@
 
 遵循“**各自平台最原生、最地道的设计语言**”原则：不强行在 Android 画 iOS 玻璃，也不在 iOS 套用 Material 卡片。
 
-## 1. 品牌色板（Brand Seed Palette）
+## 1. 品牌与配色方案（Android 4 Seed Schemes / iOS Accent）
 
-灵感取自中国石油大学（华东）青岛校区海洋深蓝与校园生态绿：
+Android V2 默认采用低饱和清透画布（浅色背景 `#EEF3F8`，纯白 `#FFFFFF` `surfaceContainerLowest` Bento 卡片）与高对比大字号指标排版，并在设置页内置 4 套精选色彩种子，同时保留 Android 12+ 动态取色开关：
 
-| 角色 | Hex | 用途 |
+| 配色种子 (`ColorSeed`) | 主色 (`primary`) | 用途与气质 |
 | --- | --- | --- |
-| **UPC Deep Blue** (`primary`) | `#0E5A8A`（深色模式 `#7CCBFF`） | 品牌种子主色、主要 CTA、Active Tab 高亮、iOS `AccentColor` |
-| **Ocean Container** (`primaryContainer`) | `#D3E9FF`（深色 `#004B74`） | 强调卡片底色、状态胶囊底色 |
-| **Campus Jade** (`secondary`) | `#1B6B4A`（深色 `#8CD7B2`） | 校园成功/正常/专注完成等语义辅助色 |
-| **Amber Notice** (`tertiary`) | `#8A5A10`（深色 `#F0BF73`） | 未验证提示、注意事项标记 |
+| **Pixel 晴海蓝 (`OCEAN_BLUE`, 默认)** | `#0B57D0`（深色 `#A8C7FA`） | 对标 Google Pixel Weather / Calendar 的明快现代蓝 |
+| **青翠校园绿 (`JADE_GREEN`)** | `#146C2E`（深色 `#8CD7B2`） | 石大校园青绿与高对比清爽阅读体验 |
+| **琥珀暖金 (`SUNSET_AMBER`)** | `#B06000`（深色 `#FFB963`） | 暖色调活跃卡片视觉 |
+| **鸢尾紫 (`IRIS_PURPLE`)** | `#65558F`（深色 `#CFBCFF`） | Android Expressive 经典柔紫色调 |
 
 ---
 
-## 2. Android：Material 3 / M3 Expressive 规范
+## 2. Android：Google Pixel Bento & Material 3 Expressive 规范
 
-对标 Google 原生软件（Settings / Clock / Pixel 体验）与 Immich 的 MD3 质感：
+对标 Google 原生软件（Pixel Weather / Google Wallet / Google Calendar）的高对比度与信息密度：
 
-- **动态取色优先（Dynamic Color）**：Android 12+（API 31+）默认读取系统壁纸动态取色，设置页提供开关可切换回品牌石大蓝静态色板。
-- **Edge-to-Edge 与系统栏**：Activity 启用 `enableEdgeToEdge()`，清单开启 `android:enableOnBackInvokedCallback="true"` 支持原生预测性返回。
-- **标准底部导航 (`NavigationBar`)**：
-  - 仅 4 个顶级 Tab 显示底部 `NavigationBar`（`首页 / 课表 / 服务 / 专注`），使用 `AlwaysShow` 标签与 M3 Active Indicator 胶囊。
-  - 进入「设置 / 学校账号 / 关于」等二级页面时平滑收起底栏，让内容全屏延伸。
-- **折叠顶栏 (`LargeTopAppBar`)**：
-  - 4 个顶级 Tab 使用 `LargeTopAppBar` + `TopAppBarDefaults.exitUntilCollapsedScrollBehavior()`，搭配 `Modifier.nestedScroll(scrollBehavior.nestedScrollConnection)` 实现丝滑折叠。
-  - 二级页面使用 `MediumTopAppBar` + 返回导航按钮。
-- **Immich / Google Settings 风格分段分组卡片**：
-  - 分组列表项不再使用单一大白块内塞分割线，而是让每项成为独立 `Surface`（底色 `surfaceContainerHigh` 或 `surfaceContainerLow`），项间保持 `2.dp` 间距，通过外侧 `24.dp`、内侧 `6.dp` 的不对称圆角形成视觉组：
-    - `SINGLE`: 四角 `24.dp`
-    - `TOP`: 上 `24.dp` / 下 `6.dp`
-    - `MIDDLE`: 四角 `6.dp`
-    - `BOTTOM`: 上 `6.dp` / 下 `24.dp`
-  - 分组间垂直间距 `20.dp`，页面水平内边距 `16.dp`。
+- **Canvas-First 层次分离**：主页面背景采用 `background`（浅色 `#EEF3F8`），核心指标卡与 Hero 卡采用纯白 `surfaceContainerLowest` 搭配 `28.dp` / `32.dp` 大圆角（Squircle）与清晰字重对比，避免“灰底叠灰卡”的沉闷感。
+- **单行顶栏 (`GoogleTopBar`)**：
+  - 顶级页面使用单行 `GoogleTopBar`，左侧显示页面大标题与上下文状态胶囊（如 `第 X 周`），右侧固定圆形账号/设置头像入口，释放首屏宝贵纵向空间。
+  - 课表页采用紧凑周切换顶栏（`第 X 周 ▾` BottomSheet、`回本周`、网格/日程流切换、校历、刷新）。
+- **标准 3-Tab `NavigationBar`**：
+  - 仅在 `今日 / 课表 / 校园` 3 个顶级页面显示底部 `NavigationBar`。
+  - 进入成绩、校园卡钱包、图书馆选座、空教室、电费、石光、校历、设置与学校账号页时平滑隐藏底栏，专注内容全屏呈现，并支持 Android 14+ 原生预测性返回与 Edge-to-Edge。
+- **正文零工程样板文**：
+  - 主界面与各业务卡片禁止堆砌 `allowBackup`、明文例外、免责声明等技术解释文案；隐私与加密细节统一收口至「关于」页面，账号页诚实维持「已保存（未验证）」语义。
+- **设置页分层与配色选择器**：保留分段分组圆角卡（`24.dp`/`6.dp`）与 4 枚交互式配色圆点按钮。
 
 ---
 
 ## 3. iOS：iOS 26+ Liquid Glass & iOS 18 HIG 规范
 
 - **部署目标与基线**：`iOS 18.0` 最小部署目标，面向 `iOS 26+` SDK 编译。
-- **原生 Tab 导航**：
-  - 使用 iOS 18+ `TabView` + `Tab(...)` 声明式 API。
-  - 在 `iOS 26+` 系统上自动渲染原生悬浮 Liquid Glass TabBar，并配合 `.tabBarMinimizeBehavior(.onScrollDown)` 在滚动时自动收拢底栏。
-  - 在 `iOS 18`–`25` 自动保持系统标准半透明底栏，零自定义 hack。
-- **Toolbar 与胶囊控件**：
-  - 使用原生 `NavigationStack` + `.navigationTitle(...)` 大标题与 `.toolbar { ToolbarItem(...) }`；iOS 26+ 系统自动为导航栏按钮赋予原生玻璃胶囊效果。
-  - 浮动状态指示器、专注计时控制胶囊按钮等悬浮控件通过 `LiquidGlassModifiers` 实现：
-    - `iOS 26+`：`.glassEffect(.regular.interactive(), in: .capsule)` 与 `GlassEffectContainer`。
-    - `iOS 18–25`：回退 `.background(.ultraThinMaterial, in: Capsule())` + `0.5pt` 半透明边框描边。
-- **避免“玻璃叠玻璃”**：
-  - 根据 Apple HIG，Liquid Glass 仅用于导航层、浮动栏、胶囊控制与局部轻浮层。
-  - 表单与服务列表正文区域（`ServicesView`、`SettingsView`、`SchoolAccountView`）坚持使用系统原生 `List` / `Form`（`.insetGrouped` 风格），保证阅读对比度与滚屏性能。
+- **原生 Tab 导航 & Toolbar**：
+  - 使用 iOS 18+ `TabView` + `Tab(...)` 声明式 API，在 `iOS 26+` 自动获得原生悬浮 Liquid Glass TabBar（`if #available(iOS 26.0, *)` + `.tabBarMinimizeBehavior(.onScrollDown)`）与玻璃胶囊 toolbar，并向 iOS 18 优雅回退标准材质。
+- **避免“玻璃叠玻璃”**：正文表单与数据卡片坚持系统原生高对比容器与 HIG 排版。

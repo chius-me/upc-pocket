@@ -10,12 +10,14 @@ import androidx.compose.runtime.SideEffect
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
+import me.chius.upcpocket.core.model.ColorSeed
 import me.chius.upcpocket.core.model.ThemePreference
 
 @Composable
 fun UpcPocketTheme(
     themePreference: ThemePreference = ThemePreference.SYSTEM,
-    dynamicColorEnabled: Boolean = true,
+    colorSeed: ColorSeed = ColorSeed.OCEAN_BLUE,
+    dynamicColorEnabled: Boolean = false,
     content: @Composable () -> Unit,
 ) {
     val systemDark = isSystemInDarkTheme()
@@ -29,7 +31,7 @@ fun UpcPocketTheme(
     val colorScheme = if (dynamicColorEnabled) {
         if (useDarkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
     } else {
-        if (useDarkTheme) UpcDarkColorScheme else UpcLightColorScheme
+        colorSchemeForSeed(seed = colorSeed, dark = useDarkTheme)
     }
 
     val view = LocalView.current

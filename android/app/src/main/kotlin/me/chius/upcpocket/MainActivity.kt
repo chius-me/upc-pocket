@@ -19,6 +19,7 @@ class MainActivity : ComponentActivity() {
             val preferences by container.preferencesRepository.state.collectAsStateWithLifecycle()
             UpcPocketTheme(
                 themePreference = preferences.theme,
+                colorSeed = preferences.colorSeed,
                 dynamicColorEnabled = preferences.dynamicColorEnabled,
             ) {
                 UpcPocketNavHost(container = container)

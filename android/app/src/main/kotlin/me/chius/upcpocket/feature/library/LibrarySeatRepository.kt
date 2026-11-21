@@ -47,12 +47,13 @@ internal interface LibraryCredentialAccess {
 }
 
 /**
- * Coordinates strictly read-only queries for both `libspace.upc.edu.cn` (`libseat`) and
- * `office.chaoxing.com` (`seat` / `seatengine`).
+ * Coordinates library queries, reservations, and cancellations for both `libspace.upc.edu.cn`
+ * (`libseat`) and `office.chaoxing.com` (`seat` / `seatengine`).
  *
  * Security invariants:
  * - Library tokens and Chaoxing cookies are held in RAM only and never written to disk or logs.
  * - Both in-memory sessions and UI state are invalidated immediately on account switch/clear.
+ * - Reservations and cancellations never auto-retry on unknown outcomes.
  * - Late network completions checked against `accountId`, `generation`, and `businessEpoch` are dropped.
  */
 class LibrarySeatRepository internal constructor(
@@ -364,8 +365,323 @@ class LibrarySeatRepository internal constructor(
             it.copy(
                 libseatSelectedRoom = null,
                 libseatSelectedRoomLayout = null,
+                libseatSelectedSeat = null,
+                libseatStartTimes = emptyList(),
+                libseatEndTimes = emptyList(),
+                libseatSelectedStart = null,
+                libseatSelectedEnd = null,
                 isLoadingRoomDetail = false,
+                isLoadingSeatTimes = false,
             )
+        }
+    }
+
+    fun dismissLibseatSeatSheet() {
+        _uiState.update {
+            it.copy(
+                libseatSelectedSeat = null,
+                libseatStartTimes = emptyList(),
+                libseatEndTimes = emptyList(),
+                libseatSelectedStart = null,
+                libseatSelectedEnd = null,
+                isLoadingSeatTimes = false,
+            )
+        }
+    }
+
+    fun dismissReservationMessage() {
+        _uiState.update { it.copy(reservationMessage = null) }
+    }
+
+    suspend fun selectLibseatSeat(seat: LibrarySeat) = withContext(ioDispatcher) {
+        if (!seat.selectable) return@withContext
+        mutex.withLock {
+            val state = accountStateProvider()
+            val accountId = state.accountId ?: return@withLock
+            val generation = state.generation
+            val epoch = businessEpoch.get()
+            val date = _uiState.value.libseatSelectedDate ?: return@withLock
+            if (state.status != AccountStatus.SAVED_UNVERIFIED) return@withLock
+
+            _uiState.update {
+                it.copy(
+                    libseatSelectedSeat = seat,
+                    libseatStartTimes = emptyList(),
+                    libseatEndTimes = emptyList(),
+                    libseatSelectedStart = null,
+                    libseatSelectedEnd = null,
+                    isLoadingSeatTimes = true,
+                    errorMessage = null,
+                    reservationMessage = null,
+                )
+            }
+            try {
+                val startTimes = withLibseatTokenLocked(accountId, generation, epoch) { token ->
+                    fetchLibseatStartTimes(token, seat.id, date)
+                } ?: return@withLock
+                val defaultStart = startTimes.firstOrNull()
+                val endTimes = if (defaultStart != null) {
+                    withLibseatTokenLocked(accountId, generation, epoch) { token ->
+                        fetchLibseatEndTimes(token, seat.id, date, defaultStart.id)
+                    } ?: return@withLock
+                } else {
+                    emptyList()
+                }
+                val defaultEnd = endTimes.lastOrNull()
+                if (!stillValid(accountId, generation, epoch)) return@withLock
+                _uiState.update {
+                    it.copy(
+                        isLoadingSeatTimes = false,
+                        libseatStartTimes = startTimes,
+                        libseatSelectedStart = defaultStart,
+                        libseatEndTimes = endTimes,
+                        libseatSelectedEnd = defaultEnd,
+                    )
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                if (!stillValid(accountId, generation, epoch)) return@withLock
+                _uiState.update {
+                    it.copy(
+                        isLoadingSeatTimes = false,
+                        errorMessage = e.message ?: "读取可用预约时段失败",
+                    )
+                }
+            }
+        }
+    }
+
+    suspend fun selectLibseatStartTime(option: LibraryTimeOption) = withContext(ioDispatcher) {
+        mutex.withLock {
+            val state = accountStateProvider()
+            val accountId = state.accountId ?: return@withLock
+            val generation = state.generation
+            val epoch = businessEpoch.get()
+            val seat = _uiState.value.libseatSelectedSeat ?: return@withLock
+            val date = _uiState.value.libseatSelectedDate ?: return@withLock
+            if (state.status != AccountStatus.SAVED_UNVERIFIED) return@withLock
+
+            _uiState.update {
+                it.copy(
+                    libseatSelectedStart = option,
+                    libseatEndTimes = emptyList(),
+                    libseatSelectedEnd = null,
+                    isLoadingSeatTimes = true,
+                    errorMessage = null,
+                )
+            }
+            try {
+                val endTimes = withLibseatTokenLocked(accountId, generation, epoch) { token ->
+                    fetchLibseatEndTimes(token, seat.id, date, option.id)
+                } ?: return@withLock
+                if (!stillValid(accountId, generation, epoch)) return@withLock
+                _uiState.update {
+                    it.copy(
+                        isLoadingSeatTimes = false,
+                        libseatEndTimes = endTimes,
+                        libseatSelectedEnd = endTimes.lastOrNull(),
+                    )
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                if (!stillValid(accountId, generation, epoch)) return@withLock
+                _uiState.update {
+                    it.copy(
+                        isLoadingSeatTimes = false,
+                        errorMessage = e.message ?: "读取结束时间失败",
+                    )
+                }
+            }
+        }
+    }
+
+    fun selectLibseatEndTime(option: LibraryTimeOption) {
+        _uiState.update { it.copy(libseatSelectedEnd = option) }
+    }
+
+    suspend fun reserveSelectedLibseatSeat() = withContext(ioDispatcher) {
+        mutex.withLock {
+            val state = accountStateProvider()
+            val accountId = state.accountId ?: return@withLock
+            val generation = state.generation
+            val epoch = businessEpoch.get()
+            val session = libseatSession ?: return@withLock
+            if (!stillValid(accountId, generation, epoch) ||
+                session.accountId != accountId ||
+                session.generation != generation ||
+                session.epoch != epoch
+            ) return@withLock
+
+            val snapshot = _uiState.value
+            val room = snapshot.libseatSelectedRoom ?: return@withLock
+            val seat = snapshot.libseatSelectedSeat ?: return@withLock
+            val date = snapshot.libseatSelectedDate ?: return@withLock
+            val start = snapshot.libseatSelectedStart ?: return@withLock
+            val end = snapshot.libseatSelectedEnd ?: return@withLock
+            if (snapshot.isSubmittingReservation) return@withLock
+
+            _uiState.update {
+                it.copy(
+                    isSubmittingReservation = true,
+                    errorMessage = null,
+                    reservationMessage = null,
+                )
+            }
+            try {
+                val captchaEnabled = runCatching {
+                    LibrarySeatProtocol.isCaptchaEnabled(
+                        requestLibseat("GET", "/rest/v2/settings", token = session.token),
+                    )
+                }.getOrElse { failure ->
+                    if (failure is CancellationException) throw failure
+                    if (!stillValid(accountId, generation, epoch)) return@withLock
+                    _uiState.update {
+                        it.copy(
+                            isSubmittingReservation = false,
+                            errorMessage = failure.message ?: "提交前验证码检查失败，未提交",
+                        )
+                    }
+                    return@withLock
+                }
+                if (!stillValid(accountId, generation, epoch)) return@withLock
+                if (captchaEnabled) {
+                    _uiState.update {
+                        it.copy(
+                            isSubmittingReservation = false,
+                            connectionStatus = LibraryConnectionStatus.INTERACTION_REQUIRED,
+                            interactionRequest = LibraryInteractionRequest(
+                                system = LibrarySystemTab.LIBSEAT,
+                                sessionContext = ControlledWebViewContract.SessionContext(
+                                    accountId = accountId,
+                                    generation = generation,
+                                    entryUrl = UpcLibraryAuthEndpoints.PAGE_URL,
+                                ),
+                                scopeHosts = ControlledWebViewContract.libraryScopeHosts,
+                                targetHost = UpcLibraryAuthEndpoints.LIBRARY_HOST,
+                                completionPathPrefixes = setOf("/", "/home", "/index"),
+                                allowCompletionWithoutCookies = false,
+                                reason = "学校当前开启了预约验证码，请在官方网页完成预约。",
+                            ),
+                        )
+                    }
+                    return@withLock
+                }
+
+                val body = requestLibseat(
+                    method = "POST",
+                    path = "/rest/v2/freeBook",
+                    query = mapOf("token" to session.token),
+                    form = mapOf(
+                        "startTime" to start.normalizedId,
+                        "endTime" to end.id,
+                        "seat" to seat.id,
+                        "date" to date,
+                        "userId" to session.user.id,
+                        "username" to session.user.username,
+                        "authid" to "",
+                    ),
+                    token = session.token,
+                )
+                LibrarySeatProtocol.ensureBooked(body)
+                if (!stillValid(accountId, generation, epoch)) return@withLock
+
+                val building = snapshot.libseatSelectedBuilding
+                val floorMap = snapshot.libseatFloors.associate { it.floorNum to it.floorName }
+                val updatedReservations = runCatching {
+                    fetchLibseatCurrentReservations(session.token)
+                }.getOrDefault(snapshot.libseatCurrentReservations)
+                val updatedLayout = runCatching {
+                    fetchLibseatLayout(session.token, room.roomId, date)
+                }.getOrNull()
+                val updatedRooms = if (building != null) {
+                    runCatching { fetchLibseatRooms(session.token, building, date, floorMap) }
+                        .getOrDefault(snapshot.libseatRooms)
+                } else {
+                    snapshot.libseatRooms
+                }
+                if (!stillValid(accountId, generation, epoch)) return@withLock
+                _uiState.update {
+                    it.copy(
+                        isSubmittingReservation = false,
+                        libseatSelectedSeat = null,
+                        libseatStartTimes = emptyList(),
+                        libseatEndTimes = emptyList(),
+                        libseatSelectedStart = null,
+                        libseatSelectedEnd = null,
+                        libseatCurrentReservations = updatedReservations,
+                        libseatRooms = updatedRooms,
+                        libseatSelectedRoomLayout = updatedLayout ?: it.libseatSelectedRoomLayout,
+                        reservationMessage = "已成功预约 ${room.name} ${seat.name}（${start.value}–${end.value}）",
+                    )
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                if (!stillValid(accountId, generation, epoch)) return@withLock
+                _uiState.update {
+                    it.copy(
+                        isSubmittingReservation = false,
+                        errorMessage = e.message ?: "预约失败，请核对当前预约状态后再试",
+                    )
+                }
+            }
+        }
+    }
+
+    suspend fun cancelLibseatReservation(reservation: LibraryReservation) = withContext(ioDispatcher) {
+        if (!reservation.cancellable) return@withContext
+        mutex.withLock {
+            val state = accountStateProvider()
+            val accountId = state.accountId ?: return@withLock
+            val generation = state.generation
+            val epoch = businessEpoch.get()
+            if (state.status != AccountStatus.SAVED_UNVERIFIED) return@withLock
+
+            _uiState.update {
+                it.copy(
+                    cancellingReservationId = reservation.id,
+                    errorMessage = null,
+                    reservationMessage = null,
+                )
+            }
+            try {
+                withLibseatTokenLocked(accountId, generation, epoch) { token ->
+                    val body = requestLibseat(
+                        method = "GET",
+                        path = "/rest/v2/cancel/${pathSeg(reservation.id)}",
+                        query = mapOf("token" to token),
+                        token = token,
+                    )
+                    LibrarySeatProtocol.ensureBooked(body)
+                } ?: return@withLock
+                val currentRes = withLibseatTokenLocked(accountId, generation, epoch) { token ->
+                    fetchLibseatCurrentReservations(token)
+                }
+                val historyRes = withLibseatTokenLocked(accountId, generation, epoch) { token ->
+                    fetchLibseatHistoryReservations(token)
+                }
+                if (!stillValid(accountId, generation, epoch)) return@withLock
+                _uiState.update {
+                    it.copy(
+                        cancellingReservationId = null,
+                        libseatCurrentReservations = currentRes ?: it.libseatCurrentReservations,
+                        libseatHistoryReservations = historyRes ?: it.libseatHistoryReservations,
+                        reservationMessage = "已取消预约（${reservation.location}）",
+                    )
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                if (!stillValid(accountId, generation, epoch)) return@withLock
+                _uiState.update {
+                    it.copy(
+                        cancellingReservationId = null,
+                        errorMessage = e.message ?: "取消预约失败，请稍后重试",
+                    )
+                }
+            }
         }
     }
 
@@ -546,6 +862,164 @@ class LibrarySeatRepository internal constructor(
                 chaoxingUsedSeatNums = emptySet(),
                 isLoadingRoomDetail = false,
             )
+        }
+    }
+
+    suspend fun reserveChaoxingSeat() = withContext(ioDispatcher) {
+        mutex.withLock {
+            val state = accountStateProvider()
+            val accountId = state.accountId ?: return@withLock
+            val generation = state.generation
+            val epoch = businessEpoch.get()
+            if (state.status != AccountStatus.SAVED_UNVERIFIED) return@withLock
+
+            val snapshot = _uiState.value
+            val kind = snapshot.activeTab.toChaoxingKind() ?: return@withLock
+            val room = snapshot.chaoxingSelectedRoom ?: return@withLock
+            val seatNum = snapshot.chaoxingSelectedSeatNum ?: return@withLock
+            val date = snapshot.chaoxingSelectedDate.ifBlank { chaoxingDateOptions().first() }
+            val startMin = snapshot.chaoxingSelectedStartMinute
+            val endMin = snapshot.chaoxingSelectedEndMinute
+            if (endMin <= startMin) {
+                _uiState.update { it.copy(errorMessage = "结束时间必须晚于开始时间") }
+                return@withLock
+            }
+            if (snapshot.isSubmittingReservation) return@withLock
+            val unknownKey = "$accountId:$generation:${kind.api}:${room.id}:$date:$startMin:$endMin:$seatNum"
+            if (snapshot.chaoxingSubmissionUnknownKey == unknownKey) {
+                _uiState.update { it.copy(errorMessage = "提交结果未知；请到学校记录核对，勿重复提交。") }
+                return@withLock
+            }
+
+            _uiState.update {
+                it.copy(
+                    isSubmittingReservation = true,
+                    errorMessage = null,
+                    reservationMessage = null,
+                )
+            }
+            try {
+                val result = withChaoxingCookieLocked(accountId, generation, epoch) { cookie ->
+                    val selectParams = linkedMapOf(
+                        "id" to room.id.toString(),
+                        "deptIdEnc" to UpcChaoxingAuthEndpoints.FID_ENC,
+                        "fidEnc" to UpcChaoxingAuthEndpoints.FID_ENC,
+                        "day" to date,
+                    )
+                    if (kind == ChaoxingSeatKind.SEATENGINE) {
+                        selectParams["seatId"] = UpcChaoxingAuthEndpoints.SEATENGINE_SEAT_ID
+                    }
+                    val selectHtml = readChaoxing(
+                        cookieHeader = cookie,
+                        url = "https://office.chaoxing.com/front/third/apps/${kind.api}/select?${queryString(selectParams)}",
+                    )
+                    val secrets = ChaoxingProtocol.parseSelectPage(selectHtml)
+                    if (secrets.riskCheckRequired) {
+                        return@withChaoxingCookieLocked ChaoxingReservationResult.InteractionRequired(
+                            "学校要求安全验证；请在官方页完成本次预约。",
+                        )
+                    }
+                    if (kind == ChaoxingSeatKind.SEATENGINE && secrets.wfwEngineEnc.length > 256) {
+                        return@withChaoxingCookieLocked ChaoxingReservationResult.Rejected(
+                            "选座页校验字段异常，未提交。",
+                        )
+                    }
+                    val params = ChaoxingProtocol.submitParams(
+                        kind = kind,
+                        deptIdEnc = UpcChaoxingAuthEndpoints.FID_ENC,
+                        roomId = room.id,
+                        day = date,
+                        startTime = formatClockMinute(startMin),
+                        endTime = formatClockMinute(endMin),
+                        seatNum = seatNum,
+                        submitEnc = secrets.submitEnc,
+                        wfwEngineEnc = secrets.wfwEngineEnc,
+                    )
+                    if (!stillValid(accountId, generation, epoch)) {
+                        return@withChaoxingCookieLocked ChaoxingReservationResult.Rejected("账号状态已变化，未重复提交。")
+                    }
+                    postChaoxingSubmit(
+                        cookieHeader = cookie,
+                        url = "https://office.chaoxing.com/data/apps/${kind.api}/submit",
+                        formBody = queryString(params),
+                        seatNum = seatNum,
+                        day = date,
+                    )
+                } ?: return@withLock
+
+                if (!stillValid(accountId, generation, epoch)) return@withLock
+                when (result) {
+                    is ChaoxingReservationResult.Success -> {
+                        val refreshedUsed = runCatching {
+                            withChaoxingCookieLocked(accountId, generation, epoch) { cookie ->
+                                fetchChaoxingUsedSeatNums(kind, cookie, room.id, startMin, endMin, date)
+                            }
+                        }.getOrNull()
+                        if (!stillValid(accountId, generation, epoch)) return@withLock
+                        _uiState.update {
+                            it.copy(
+                                isSubmittingReservation = false,
+                                chaoxingSubmissionUnknownKey = null,
+                                chaoxingSelectedSeatNum = null,
+                                chaoxingSelectedSeatUsedTimes = emptyList(),
+                                chaoxingUsedSeatNums = refreshedUsed ?: it.chaoxingUsedSeatNums,
+                                reservationMessage = "已成功预约 ${room.name} $seatNum 号（${formatClockMinute(startMin)}–${formatClockMinute(endMin)}）",
+                            )
+                        }
+                    }
+                    is ChaoxingReservationResult.Rejected -> {
+                        _uiState.update {
+                            it.copy(
+                                isSubmittingReservation = false,
+                                errorMessage = result.message,
+                            )
+                        }
+                    }
+                    is ChaoxingReservationResult.InteractionRequired -> {
+                        _uiState.update {
+                            it.copy(
+                                isSubmittingReservation = false,
+                                connectionStatus = LibraryConnectionStatus.INTERACTION_REQUIRED,
+                                interactionRequest = LibraryInteractionRequest(
+                                    system = snapshot.activeTab,
+                                    sessionContext = ControlledWebViewContract.SessionContext(
+                                        accountId = accountId,
+                                        generation = generation,
+                                        entryUrl = kind.officialUrl,
+                                    ),
+                                    scopeHosts = ControlledWebViewContract.chaoxingScopeHosts,
+                                    targetHost = UpcChaoxingAuthEndpoints.OFFICE_HOST,
+                                    completionPathPrefixes = setOf(
+                                        UpcChaoxingAuthEndpoints.OFFICE_SEAT_PATH,
+                                        "/front/third/apps/seatengine/index",
+                                    ),
+                                    allowCompletionWithoutCookies = true,
+                                    reason = result.message,
+                                ),
+                            )
+                        }
+                    }
+                    is ChaoxingReservationResult.Unknown -> {
+                        _uiState.update {
+                            it.copy(
+                                isSubmittingReservation = false,
+                                chaoxingSubmissionUnknownKey = unknownKey,
+                                errorMessage = result.message,
+                            )
+                        }
+                    }
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                if (!stillValid(accountId, generation, epoch)) return@withLock
+                _uiState.update {
+                    it.copy(
+                        isSubmittingReservation = false,
+                        errorMessage = e.message ?: "提交超星预约失败，请重试",
+                    )
+                }
+            }
         }
     }
 
@@ -827,7 +1301,7 @@ class LibrarySeatRepository internal constructor(
                     connectionStatus = LibraryConnectionStatus.READY,
                     isLoading = false,
                     errorMessage = null,
-                    statusMessage = "已同步 ${building.name}（只读）",
+                    statusMessage = "已同步 ${building.name}",
                     libseatDates = filters.dates,
                     libseatSelectedDate = date,
                     libseatBuildings = filters.buildings,
@@ -882,7 +1356,7 @@ class LibrarySeatRepository internal constructor(
                     connectionStatus = LibraryConnectionStatus.READY,
                     isLoading = false,
                     errorMessage = null,
-                    statusMessage = "已同步 ${kind.campusLabel} 房间列表（只读）",
+                    statusMessage = "已同步 ${kind.campusLabel} 房间列表",
                     chaoxingRooms = page.rooms,
                     chaoxingSelectedRoom = null,
                     chaoxingSelectedRoomDetail = null,
@@ -1242,6 +1716,35 @@ class LibrarySeatRepository internal constructor(
             ),
         )
 
+    private suspend fun fetchLibseatStartTimes(
+        token: String,
+        seatId: String,
+        date: String,
+    ): List<LibraryTimeOption> =
+        LibrarySeatProtocol.parseStartTimes(
+            requestLibseat(
+                "GET",
+                "/rest/v2/startTimesForSeat/${pathSeg(seatId)}/${pathSeg(date)}",
+                mapOf("token" to token),
+                token = token,
+            ),
+        )
+
+    private suspend fun fetchLibseatEndTimes(
+        token: String,
+        seatId: String,
+        date: String,
+        startId: String,
+    ): List<LibraryTimeOption> =
+        LibrarySeatProtocol.parseEndTimes(
+            requestLibseat(
+                "GET",
+                "/rest/v2/endTimesForSeat/${pathSeg(seatId)}/${pathSeg(date)}/${pathSeg(startId)}",
+                mapOf("token" to token),
+                token = token,
+            ),
+        )
+
     private suspend fun fetchLibseatCurrentReservations(token: String): List<LibraryReservation> =
         LibrarySeatProtocol.parseCurrentReservations(
             requestLibseat("GET", "/rest/v2/user/reservations", mapOf("token" to token), token = token),
@@ -1460,6 +1963,43 @@ class LibrarySeatRepository internal constructor(
         }
     }
 
+    private suspend fun postChaoxingSubmit(
+        cookieHeader: String,
+        url: String,
+        formBody: String,
+        seatNum: String,
+        day: String,
+    ): ChaoxingReservationResult {
+        requireChaoxingSubmitUrl(url)
+        val headers = linkedMapOf(
+            "Accept" to "application/json, text/html;q=0.9",
+            "User-Agent" to "Mozilla/5.0 (Linux; Android 16) AppleWebKit/537.36 Chrome/131 Mobile Safari/537.36",
+            "Content-Type" to "application/x-www-form-urlencoded; charset=UTF-8",
+        )
+        if (cookieHeader.isNotBlank()) {
+            headers["Cookie"] = cookieHeader
+        }
+        return try {
+            val response = transport.execute(
+                CasHttpRequest(
+                    url = url,
+                    method = "POST",
+                    headers = headers,
+                    formBody = formBody,
+                ),
+            )
+            if (response.statusCode !in 200..299) {
+                ChaoxingProtocol.unknownChaoxingSubmission()
+            } else {
+                ChaoxingProtocol.parseSubmitResponse(response.body, seatNum, day)
+            }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            ChaoxingProtocol.unknownChaoxingSubmission()
+        }
+    }
+
     private fun requireChaoxingReadUrl(raw: String) {
         val uri = runCatching { URI(raw) }.getOrNull() ?: throw ChaoxingException("非法 Chaoxing URL")
         val host = uri.host?.lowercase(Locale.ROOT)
@@ -1470,6 +2010,8 @@ class LibrarySeatRepository internal constructor(
             host == UpcChaoxingAuthEndpoints.OFFICE_HOST &&
             (path == UpcChaoxingAuthEndpoints.OFFICE_SEAT_PATH ||
                 path == "/front/third/apps/seatengine/index" ||
+                path == "/front/third/apps/seat/select" ||
+                path == "/front/third/apps/seatengine/select" ||
                 path == "/data/apps/seat/room/list" ||
                 path == "/data/apps/seat/room/info" ||
                 path == "/data/apps/seat/getdrawseat" ||
@@ -1481,7 +2023,21 @@ class LibrarySeatRepository internal constructor(
                 path == "/data/apps/seatengine/getusedseatnums" ||
                 path == "/data/apps/seatengine/getusedtimes")
         if (!allowed) {
-            throw ChaoxingException("未允许的超星只读路径", "chaoxing_protocol")
+            throw ChaoxingException("未允许的超星读取路径", "chaoxing_protocol")
+        }
+    }
+
+    private fun requireChaoxingSubmitUrl(raw: String) {
+        val uri = runCatching { URI(raw) }.getOrNull() ?: throw ChaoxingException("非法 Chaoxing URL")
+        val host = uri.host?.lowercase(Locale.ROOT)
+        val path = uri.rawPath.orEmpty()
+        val allowed = uri.scheme.equals("https", ignoreCase = true) &&
+            uri.rawUserInfo == null &&
+            uri.port in setOf(-1, 443) &&
+            host == UpcChaoxingAuthEndpoints.OFFICE_HOST &&
+            (path == "/data/apps/seat/submit" || path == "/data/apps/seatengine/submit")
+        if (!allowed) {
+            throw ChaoxingException("未允许的超星提交路径", "chaoxing_protocol")
         }
     }
 }

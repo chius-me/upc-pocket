@@ -1,5 +1,5 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "school": {
     "id": "upc",
     "name": "中国石油大学（华东）"
@@ -41,6 +41,16 @@
       "integration": "native_read_only"
     },
     {
+      "id": "grades_gpa",
+      "name": "成绩查询与 GPA 推演",
+      "category": "study",
+      "campus": "all",
+      "url": "https://jwxt.upc.edu.cn/jsxsd/kscj/cjcx_list",
+      "authentication": "UPC CAS -> http://jwxt.upc.edu.cn/sso.jsp upgraded to HTTPS + self identity check",
+      "target_milestone": "V2",
+      "integration": "native_read_only"
+    },
+    {
       "id": "free_classroom",
       "name": "空闲教室",
       "category": "study",
@@ -72,7 +82,7 @@
     },
     {
       "id": "campus_card_balance",
-      "name": "校园卡余额",
+      "name": "校园卡快速余额",
       "category": "life",
       "campus": "all",
       "url": "http://jhzf.upc.edu.cn:20081/wechat/callinterface/getCardInfo.html",
@@ -81,8 +91,28 @@
       "integration": "native_read_only"
     },
     {
+      "id": "campus_card_history",
+      "name": "校园卡流水与统计",
+      "category": "life",
+      "campus": "all",
+      "url": "https://mb-xyk.upc.edu.cn/berserker-auth/cas/redirect/wislearn?targetUrl=https%3A%2F%2Fmb-xyk.upc.edu.cn%2Fplat%2F%3Fname%3DloginTransit",
+      "authentication": "UPC CAS OAuth + controlled WebView fallback + /berserker-base/user self check",
+      "target_milestone": "V2",
+      "integration": "native_read_only"
+    },
+    {
+      "id": "campus_card_recharge",
+      "name": "校园卡微信充值",
+      "category": "life",
+      "campus": "all",
+      "url": "https://mb-xyk.upc.edu.cn/",
+      "authentication": "Explicit user-confirmed single-shot SHA256-signed order + com.tencent.mm H5 launch",
+      "target_milestone": "V2",
+      "integration": "native_confirmed_write"
+    },
+    {
       "id": "library_seat",
-      "name": "图书馆座位",
+      "name": "图书馆选座与预约管理",
       "category": "study",
       "campus": "all",
       "urls": [
@@ -90,99 +120,29 @@
         "https://office.chaoxing.com/front/third/apps/seat/index",
         "https://office.chaoxing.com/front/third/apps/seatengine/index"
       ],
-      "authentication": "UPC CAS normal login or controlled WebView fallback",
-      "target_milestone": "M2",
+      "authentication": "UPC CAS normal login or controlled WebView fallback; explicit user confirmation for book/cancel",
+      "target_milestone": "V2",
+      "integration": "native_confirmed_write"
+    },
+    {
+      "id": "shiguang",
+      "name": "石光第二课堂",
+      "category": "campus",
+      "campus": "all",
+      "url": "https://dekt.upc.edu.cn",
+      "authentication": "UPC CAS -> http://dekt.upc.edu.cn/caslogin.jsp upgraded to HTTPS + stuNo self check",
+      "target_milestone": "V2",
       "integration": "native_read_only"
     },
     {
       "id": "academic_calendar",
-      "name": "校历（教务处）",
+      "name": "官方校历（教务处）",
       "category": "official_web",
       "campus": "all",
       "url": "https://jwc.upc.edu.cn/603/list.htm",
-      "authentication": "Public HTTPS",
-      "target_milestone": "M0",
-      "integration": "official_external_page"
-    },
-    {
-      "id": "academic_affairs_system",
-      "name": "教务系统",
-      "category": "official_web",
-      "campus": "all",
-      "url": "https://jwxt.upc.edu.cn/jsxsd/framework/xsMainV.htmlx",
-      "authentication": "External browser login",
-      "target_milestone": "M0",
-      "integration": "official_external_page"
-    },
-    {
-      "id": "digital_upc",
-      "name": "数字石大",
-      "category": "official_web",
-      "campus": "all",
-      "url": "https://i.upc.edu.cn/",
-      "authentication": "External browser login",
-      "target_milestone": "M0",
-      "integration": "official_external_page"
-    },
-    {
-      "id": "academic_affairs_website",
-      "name": "教务处官网",
-      "category": "official_web",
-      "campus": "all",
-      "url": "https://jwc.upc.edu.cn/",
-      "authentication": "Public HTTPS",
-      "target_milestone": "M0",
-      "integration": "official_external_page"
-    },
-    {
-      "id": "colleges_directory",
-      "name": "学院官网",
-      "category": "official_web",
-      "campus": "all",
-      "url": "https://www.upc.edu.cn/jxkydw.htm",
-      "authentication": "Public HTTPS",
-      "target_milestone": "M0",
-      "integration": "official_external_page"
-    },
-    {
-      "id": "shiguang",
-      "name": "石光（第二课堂）",
-      "category": "campus",
-      "campus": "all",
-      "url": "https://dekt.upc.edu.cn",
-      "authentication": "UPC CAS; read-only candidate",
-      "target_milestone": "M3",
-      "integration": "deferred_read_only"
-    },
-    {
-      "id": "service_portal",
-      "name": "e站通",
-      "category": "campus",
-      "campus": "all",
-      "url": "https://service.upc.edu.cn/",
-      "authentication": "UPC CAS; read-only candidate",
-      "target_milestone": "M3",
-      "integration": "deferred_read_only"
-    },
-    {
-      "id": "campus_card_history",
-      "name": "校园卡流水",
-      "category": "life",
-      "campus": "all",
-      "url": "https://mb-xyk.upc.edu.cn/berserker-auth/cas/redirect/wislearn?targetUrl=https%3A%2F%2Fmb-xyk.upc.edu.cn%2Fplat%2F%3Fname%3DloginTransit",
-      "authentication": "UPC CAS + controlled WebView fallback; read-only",
-      "target_milestone": "deferred",
-      "integration": "deferred_read_only"
-    },
-    {
-      "id": "campus_card_recharge",
-      "name": "校园卡充值",
-      "category": "life",
-      "campus": "all",
-      "url": "https://mb-xyk.upc.edu.cn/",
-      "authentication": "High-risk write operation explicitly deferred after read-only foundation",
-      "target_milestone": "deferred",
-      "integration": "deferred_write_excluded"
+      "authentication": "Public HTTPS + high-res JPG/PNG offline image cache",
+      "target_milestone": "V2",
+      "integration": "native_read_only"
     }
   ]
 }

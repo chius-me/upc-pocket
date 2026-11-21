@@ -12,11 +12,20 @@ object ControlledWebViewContract {
     private const val MAX_URL_LENGTH = 16_384
     private val COOKIE_NAME_REGEX = Regex("[!#$%&'*+\\-.^_`|~0-9A-Za-z]{1,256}")
 
+    private val upgradableHttpCallbackHosts: Set<String> = setOf(
+        "jwxt.upc.edu.cn",
+        "mb-xyk.upc.edu.cn",
+        "dekt.upc.edu.cn",
+    )
+
     val allowedHttpsHosts: Set<String> = setOf(
         "cas.upc.edu.cn",
         "app.upc.edu.cn",
+        "jwxt.upc.edu.cn",
         "libspace.upc.edu.cn",
         "mb-xyk.upc.edu.cn",
+        "dekt.upc.edu.cn",
+        "i.upc.edu.cn",
         "tyrzfw.chaoxing.com",
         "passport2-api.chaoxing.com",
         "i.chaoxing.com",
@@ -26,6 +35,22 @@ object ControlledWebViewContract {
     val timetableScopeHosts: Set<String> = setOf(
         "cas.upc.edu.cn",
         "app.upc.edu.cn",
+    )
+
+    val jwxtScopeHosts: Set<String> = setOf(
+        "cas.upc.edu.cn",
+        "jwxt.upc.edu.cn",
+    )
+
+    val cardScopeHosts: Set<String> = setOf(
+        "cas.upc.edu.cn",
+        "mb-xyk.upc.edu.cn",
+        "i.upc.edu.cn",
+    )
+
+    val shiguangScopeHosts: Set<String> = setOf(
+        "cas.upc.edu.cn",
+        "dekt.upc.edu.cn",
     )
 
     val libraryScopeHosts: Set<String> = setOf(
@@ -53,6 +78,25 @@ object ControlledWebViewContract {
     ) {
         fun isStillValidFor(current: SchoolAccountState): Boolean =
             current.accountId == accountId && current.generation == generation
+    }
+
+    fun upgradeCallbackHttpToHttpsIfAllowed(
+        rawUrl: String,
+        scopeHosts: Set<String> = allowedHttpsHosts,
+    ): String? {
+        if (rawUrl.isBlank() || rawUrl.length > MAX_URL_LENGTH) return null
+        val uri = runCatching { URI(rawUrl) }.getOrNull() ?: return null
+        if (!uri.scheme.equals("http", ignoreCase = true) || uri.rawUserInfo != null) return null
+        val host = uri.host?.lowercase(Locale.ROOT)?.takeIf { !it.endsWith('.') } ?: return null
+        if (host !in upgradableHttpCallbackHosts || host !in scopeHosts) return null
+        if (uri.port !in setOf(-1, 80)) return null
+
+        val upgraded = "https://$host${uri.rawPath.orEmpty()}" +
+            (uri.rawQuery?.let { "?$it" } ?: "") +
+            (uri.rawFragment?.let { "#$it" } ?: "")
+        return upgraded.takeIf {
+            inspectNavigation(it, method = "GET", isMainFrame = true, scopeHosts = scopeHosts) == Decision.ALLOW
+        }
     }
 
     fun inspectEntryUrl(
@@ -96,6 +140,32 @@ object ControlledWebViewContract {
         return when (host) {
             "cas.upc.edu.cn" -> {
                 if (path.startsWith("/cas/")) Decision.ALLOW else Decision.BLOCK
+            }
+            "jwxt.upc.edu.cn" -> {
+                if (path == "/sso.jsp" || path.startsWith("/jsxsd/")) Decision.ALLOW else Decision.BLOCK
+            }
+            "mb-xyk.upc.edu.cn" -> {
+                if (path.startsWith("/berserker-auth/") ||
+                    path.startsWith("/berserker-base/") ||
+                    path == "/plat" ||
+                    path.startsWith("/plat/") ||
+                    path.startsWith("/campus-card/")
+                ) {
+                    Decision.ALLOW
+                } else {
+                    Decision.BLOCK
+                }
+            }
+            "dekt.upc.edu.cn" -> {
+                if (path == "/caslogin.jsp" ||
+                    path.startsWith("/sysmng/") ||
+                    path.startsWith("/actvMng/") ||
+                    path.startsWith("/reportCardMng/")
+                ) {
+                    Decision.ALLOW
+                } else {
+                    Decision.BLOCK
+                }
             }
             "libspace.upc.edu.cn" -> {
                 if (path == "/libseat" ||

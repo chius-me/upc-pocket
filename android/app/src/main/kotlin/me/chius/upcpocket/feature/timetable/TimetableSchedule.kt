@@ -38,6 +38,66 @@ object TimetableSchedule {
 
     fun periodRange(period: Int): ClockRange? = OFFICIAL_PERIODS[period]
 
+    fun currentOrNextPeriod(minuteOfDay: Int): Int {
+        for (period in 1..12) {
+            val range = OFFICIAL_PERIODS[period] ?: continue
+            if (minuteOfDay <= range.endMinute) return period
+        }
+        return 12
+    }
+
+    fun meetingClockRange(meeting: CourseMeeting): ClockRange? {
+        parseCourseTime(meeting.courseTime)?.let { return it }
+        val start = periodRange(meeting.startPeriod) ?: return null
+        val end = periodRange(meeting.endPeriod) ?: return null
+        if (end.endMinute <= start.startMinute) return null
+        return ClockRange(start.startMinute, end.endMinute)
+    }
+
+    sealed interface TodayScheduleStatus {
+        data class Ongoing(
+            val meeting: CourseMeeting,
+            val timeRange: String,
+            val remainingMinutes: Int,
+        ) : TodayScheduleStatus
+
+        data class Upcoming(
+            val meeting: CourseMeeting,
+            val timeRange: String,
+            val minutesUntilStart: Int,
+        ) : TodayScheduleStatus
+
+        data class FinishedToday(val completedCount: Int) : TodayScheduleStatus
+
+        data object NoClassToday : TodayScheduleStatus
+    }
+
+    fun resolveTodayStatus(
+        dayMeetings: List<CourseMeeting>,
+        minuteOfDay: Int,
+    ): TodayScheduleStatus {
+        val sorted = dayMeetings.sortedBy { it.startPeriod }
+        if (sorted.isEmpty()) return TodayScheduleStatus.NoClassToday
+        for (meeting in sorted) {
+            val range = meetingClockRange(meeting) ?: continue
+            if (minuteOfDay in range.startMinute until range.endMinute) {
+                return TodayScheduleStatus.Ongoing(
+                    meeting = meeting,
+                    timeRange = range.label,
+                    remainingMinutes = (range.endMinute - minuteOfDay).coerceAtLeast(1),
+                )
+            }
+            if (minuteOfDay < range.startMinute) {
+                return TodayScheduleStatus.Upcoming(
+                    meeting = meeting,
+                    timeRange = range.label,
+                    minutesUntilStart = range.startMinute - minuteOfDay,
+                )
+            }
+        }
+        return TodayScheduleStatus.FinishedToday(sorted.size)
+    }
+
     fun resolveTimeRange(
         startPeriod: Int,
         endPeriod: Int,

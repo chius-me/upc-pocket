@@ -1,11 +1,14 @@
 package me.chius.upcpocket.feature.timetable
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -17,108 +20,99 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowLeft
-import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.rounded.CalendarMonth
-import androidx.compose.material.icons.rounded.CheckCircleOutline
 import androidx.compose.material.icons.rounded.CloudOff
-import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.ExpandMore
 import androidx.compose.material.icons.rounded.LockOpen
 import androidx.compose.material.icons.rounded.Refresh
-import androidx.compose.material.icons.rounded.Schedule
-import androidx.compose.material.icons.rounded.WarningAmber
+import androidx.compose.material.icons.rounded.ViewAgenda
+import androidx.compose.material.icons.rounded.ViewWeek
 import androidx.compose.material3.Button
-import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.LargeTopAppBar
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import kotlin.math.abs
+import kotlinx.coroutines.launch
 import me.chius.upcpocket.core.auth.UpcTimetableAuthEndpoints
-import me.chius.upcpocket.core.designsystem.components.ExpressiveGroupedCard
-import me.chius.upcpocket.core.designsystem.components.ExpressiveHeroCard
-import me.chius.upcpocket.core.designsystem.components.ExpressiveListRow
-import me.chius.upcpocket.core.designsystem.components.ExpressiveSectionHeader
-import me.chius.upcpocket.core.designsystem.components.ExpressiveStatusBadge
-import me.chius.upcpocket.core.designsystem.theme.GroupedCardPosition
+import me.chius.upcpocket.core.designsystem.components.HeroAtAGlanceCard
 import me.chius.upcpocket.core.model.AccountStatus
 import me.chius.upcpocket.core.model.SchoolAccountState
 import me.chius.upcpocket.core.webview.ControlledSchoolWebViewDialog
 import me.chius.upcpocket.core.webview.ControlledWebViewContract
-import me.chius.upcpocket.feature.todo.TodoEditorBottomSheet
-import me.chius.upcpocket.feature.todo.TodoOrdering
-import me.chius.upcpocket.feature.todo.TodoUiState
-import me.chius.upcpocket.feature.todo.formatTodoTimestamp
 
-@OptIn(ExperimentalMaterial3Api::class)
+private enum class TimetableViewMode {
+    GRID,
+    AGENDA,
+}
+
+@OptIn(
+    ExperimentalMaterial3Api::class,
+    ExperimentalFoundationApi::class,
+    ExperimentalLayoutApi::class,
+)
 @Composable
 fun TimetableScreen(
     accountState: SchoolAccountState,
     uiState: TimetableUiState,
-    todoState: TodoUiState,
     bottomNavPadding: Dp,
     onOpenSchoolAccount: () -> Unit,
+    onOpenAcademicCalendar: () -> Unit,
     onRefresh: () -> Unit,
     onSelectWeek: (TimetableTermInfo, Int) -> Unit,
     onAdoptWebViewCookies: (Map<String, String>, ControlledWebViewContract.SessionContext) -> Unit,
     onDismissInteraction: () -> Unit,
-    onClearCache: () -> Unit,
-    onOpenTodos: () -> Unit,
-    onToggleTodoCompleted: (String) -> Unit,
-    onUpsertTodo: (id: String?, title: String, dueAt: Long?, reminderAt: Long?) -> Unit,
 ) {
-    val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
     var showWebViewDialog by remember { mutableStateOf(false) }
-    var showTodoEditor by remember { mutableStateOf(false) }
+    var showWeekPickerSheet by remember { mutableStateOf(false) }
     var selectedMeeting by remember { mutableStateOf<CourseMeeting?>(null) }
+    var viewMode by remember { mutableStateOf(TimetableViewMode.GRID) }
 
-    if (showTodoEditor) {
-        TodoEditorBottomSheet(
-            initialTask = null,
-            onSave = { id, title, dueAt, reminderAt ->
-                onUpsertTodo(id, title, dueAt, reminderAt)
-                showTodoEditor = false
-            },
-            onDismiss = { showTodoEditor = false },
-        )
+    val cachedWeeks = remember { mutableStateMapOf<String, TimetableWeek>() }
+    LaunchedEffect(uiState.weekData) {
+        val w = uiState.weekData ?: return@LaunchedEffect
+        cachedWeeks["${w.term.year}_${w.term.term}_${w.week}"] = w
     }
 
     val activeInteractionSession = uiState.interactionSession
@@ -149,25 +143,183 @@ fun TimetableScreen(
         )
     }
 
-    Scaffold(
-        modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
-        contentWindowInsets = WindowInsets.systemBars.only(
-            WindowInsetsSides.Horizontal + WindowInsetsSides.Top,
-        ),
-        topBar = {
-            LargeTopAppBar(
-                title = { Text("课表") },
-                actions = {
-                    if (uiState.weekData != null || uiState.terms.isNotEmpty()) {
-                        IconButton(
-                            onClick = onClearCache,
-                            enabled = !uiState.isRefreshing,
-                        ) {
-                            Icon(
-                                imageVector = Icons.Rounded.DeleteOutline,
-                                contentDescription = "清除离线课表缓存",
+    val selectedTerm = uiState.selectedTerm ?: uiState.weekData?.term
+    val selectedWeekNum = uiState.selectedWeek ?: uiState.weekData?.week ?: 1
+    val totalWeeks = selectedTerm?.totalWeeks ?: 20
+
+    val scope = rememberCoroutineScope()
+    val pagerState = rememberPagerState(
+        initialPage = (selectedWeekNum - 1).coerceIn(0, (totalWeeks - 1).coerceAtLeast(0)),
+        pageCount = { totalWeeks.coerceAtLeast(1) },
+    )
+
+    LaunchedEffect(selectedWeekNum, selectedTerm) {
+        val targetPage = (selectedWeekNum - 1).coerceIn(0, (totalWeeks - 1).coerceAtLeast(0))
+        if (pagerState.currentPage != targetPage && !pagerState.isScrollInProgress) {
+            pagerState.animateScrollToPage(targetPage)
+        }
+    }
+
+    LaunchedEffect(pagerState.settledPage, selectedTerm) {
+        val term = selectedTerm ?: return@LaunchedEffect
+        val targetWeek = pagerState.settledPage + 1
+        if (targetWeek != selectedWeekNum && targetWeek in 1..term.totalWeeks) {
+            onSelectWeek(term, targetWeek)
+        }
+    }
+
+    if (showWeekPickerSheet && selectedTerm != null) {
+        val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+        ModalBottomSheet(
+            onDismissRequest = { showWeekPickerSheet = false },
+            sheetState = sheetState,
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp)
+                    .padding(bottom = 28.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+            ) {
+                Text(
+                    text = "选择教学周与学期",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                if (uiState.terms.size > 1) {
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        uiState.terms.forEach { term ->
+                            FilterChip(
+                                selected = term.year == selectedTerm.year && term.term == selectedTerm.term,
+                                onClick = {
+                                    showWeekPickerSheet = false
+                                    onSelectWeek(term, selectedWeekNum.coerceIn(1, term.totalWeeks))
+                                },
+                                label = { Text(term.label) },
                             )
                         }
+                    }
+                } else {
+                    Text(
+                        text = selectedTerm.label,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    (1..selectedTerm.totalWeeks).forEach { week ->
+                        val isCurrentSchool = week == uiState.currentSchoolWeek
+                        val isSelected = week == selectedWeekNum
+                        FilterChip(
+                            selected = isSelected,
+                            onClick = {
+                                showWeekPickerSheet = false
+                                scope.launch { pagerState.animateScrollToPage(week - 1) }
+                                onSelectWeek(selectedTerm, week)
+                            },
+                            label = {
+                                Text(
+                                    text = if (isCurrentSchool) "第${week}周 · 本周" else "第${week}周",
+                                    fontWeight = if (isCurrentSchool) FontWeight.Bold else FontWeight.Normal,
+                                )
+                            },
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    Scaffold(
+        contentWindowInsets = WindowInsets.systemBars.only(WindowInsetsSides.Horizontal),
+        topBar = {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .statusBarsPadding()
+                    .padding(horizontal = 16.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.weight(1f),
+                ) {
+                    Surface(
+                        shape = CircleShape,
+                        color = MaterialTheme.colorScheme.surfaceContainerLowest,
+                        contentColor = MaterialTheme.colorScheme.onSurface,
+                        onClick = { if (selectedTerm != null) showWeekPickerSheet = true },
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        ) {
+                            Text(
+                                text = "第 $selectedWeekNum 周",
+                                style = MaterialTheme.typography.titleLarge,
+                                fontWeight = FontWeight.Bold,
+                            )
+                            if (selectedTerm != null) {
+                                Icon(
+                                    imageVector = Icons.Rounded.ExpandMore,
+                                    contentDescription = "选择教学周",
+                                    modifier = Modifier.size(20.dp),
+                                )
+                            }
+                        }
+                    }
+
+                    val schoolWeek = uiState.currentSchoolWeek
+                    if (selectedTerm != null && schoolWeek != null && selectedWeekNum != schoolWeek) {
+                        Surface(
+                            shape = CircleShape,
+                            color = MaterialTheme.colorScheme.primaryContainer,
+                            contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                            onClick = {
+                                scope.launch { pagerState.animateScrollToPage(schoolWeek - 1) }
+                                onSelectWeek(selectedTerm, schoolWeek)
+                            },
+                        ) {
+                            Text(
+                                text = "回本周",
+                                style = MaterialTheme.typography.labelLarge,
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
+                            )
+                        }
+                    }
+                }
+
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(
+                        onClick = {
+                            viewMode = if (viewMode == TimetableViewMode.GRID) {
+                                TimetableViewMode.AGENDA
+                            } else {
+                                TimetableViewMode.GRID
+                            }
+                        },
+                    ) {
+                        Icon(
+                            imageVector = if (viewMode == TimetableViewMode.GRID) {
+                                Icons.Rounded.ViewAgenda
+                            } else {
+                                Icons.Rounded.ViewWeek
+                            },
+                            contentDescription = "切换周网格与日程列表",
+                        )
+                    }
+                    IconButton(onClick = onOpenAcademicCalendar) {
+                        Icon(Icons.Rounded.CalendarMonth, contentDescription = "校历")
                     }
                     if (accountState.status == AccountStatus.SAVED_UNVERIFIED) {
                         IconButton(
@@ -180,473 +332,190 @@ fun TimetableScreen(
                                     strokeWidth = 2.dp,
                                 )
                             } else {
-                                Icon(
-                                    imageVector = Icons.Rounded.Refresh,
-                                    contentDescription = "同步课表",
-                                )
+                                Icon(Icons.Rounded.Refresh, contentDescription = "同步课表")
                             }
                         }
                     }
-                },
-                scrollBehavior = scrollBehavior,
-            )
+                }
+            }
         },
     ) { innerPadding ->
-        LazyColumn(
-            modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(
-                start = 16.dp,
-                end = 16.dp,
-                top = innerPadding.calculateTopPadding() + 8.dp,
-                bottom = bottomNavPadding + 20.dp,
-            ),
-            verticalArrangement = Arrangement.spacedBy(2.dp),
-        ) {
-            item {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(bottom = 6.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    ExpressiveSectionHeader(
-                        title = "今日日程待办",
-                        subtitle = if (todoState.incompleteTasks.isEmpty()) {
-                            "本机存储，可设独立截止与一次性提醒"
-                        } else {
-                            "共 ${todoState.incompleteTasks.size} 项未完成，点击可管理"
-                        },
-                        modifier = Modifier.weight(1f),
-                    )
-                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                        TextButton(onClick = { showTodoEditor = true }) {
-                            Text("新建")
-                        }
-                        TextButton(onClick = onOpenTodos) {
-                            Text("全部")
-                        }
-                    }
-                }
-            }
-
-            item {
-                if (todoState.todayScheduleTasks.isEmpty()) {
-                    ExpressiveListRow(
-                        title = "今日暂无未完成待办",
-                        subtitle = "点击右上角「新建」添加本机待办与独立提醒",
-                        leadingIcon = Icons.Rounded.CheckCircleOutline,
-                        leadingContainerColor = MaterialTheme.colorScheme.secondaryContainer,
-                        leadingContentColor = MaterialTheme.colorScheme.onSecondaryContainer,
-                        position = GroupedCardPosition.SINGLE,
-                        onClick = onOpenTodos,
-                        modifier = Modifier.padding(bottom = 18.dp),
-                    )
-                } else {
-                    ExpressiveGroupedCard(
-                        position = GroupedCardPosition.SINGLE,
-                        onClick = onOpenTodos,
-                        modifier = Modifier.padding(bottom = 18.dp),
-                    ) {
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 8.dp, vertical = 6.dp),
-                            verticalArrangement = Arrangement.spacedBy(2.dp),
-                        ) {
-                            val now = System.currentTimeMillis()
-                            todoState.todayScheduleTasks.forEach { task ->
-                                val urgent = TodoOrdering.isOverdueOrToday(task, now)
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                ) {
-                                    Checkbox(
-                                        checked = task.completed,
-                                        onCheckedChange = { onToggleTodoCompleted(task.id) },
-                                    )
-                                    Column(
-                                        modifier = Modifier
-                                            .weight(1f)
-                                            .padding(end = 8.dp),
-                                    ) {
-                                        Text(
-                                            text = task.title,
-                                            style = MaterialTheme.typography.bodyLarge,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis,
-                                        )
-                                        val meta = buildList {
-                                            task.dueAt?.let { add("截止 ${formatTodoTimestamp(it)}") }
-                                            task.reminderAt?.let { add("提醒 ${formatTodoTimestamp(it)}") }
-                                        }.joinToString(" · ")
-                                        if (meta.isNotEmpty()) {
-                                            Text(
-                                                text = meta,
-                                                style = MaterialTheme.typography.labelSmall,
-                                                color = if (urgent) {
-                                                    MaterialTheme.colorScheme.error
-                                                } else {
-                                                    MaterialTheme.colorScheme.onSurfaceVariant
-                                                },
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            item {
-                ExpressiveSectionHeader(
-                    title = "周视图（周日–周六 · 1–12 节）",
-                    subtitle = uiState.statusDetail,
-                    modifier = Modifier.padding(bottom = 6.dp),
-                )
-            }
-
-            if (accountState.status != AccountStatus.SAVED_UNVERIFIED) {
-                item {
-                    val (badge, subtitle) = when (accountState.status) {
-                        AccountStatus.UNSET ->
-                            "未配置账号" to "请先前往「学校账号」保存学号与统一认证密码，方可同步学校课表。"
-                        AccountStatus.RECOVERY_REQUIRED ->
-                            "需要重新保存" to "加密状态已失效或需要重置，请先重新保存学校账号凭据。"
-                        AccountStatus.SAVED_UNVERIFIED -> "" to ""
-                    }
-                    ExpressiveHeroCard(
-                        title = "只读周课表",
-                        subtitle = subtitle,
-                        icon = Icons.Rounded.CalendarMonth,
-                        badgeText = badge,
-                        onClick = onOpenSchoolAccount,
-                        modifier = Modifier.padding(bottom = 12.dp),
-                    )
-                }
-            } else {
-                item {
-                    TimetableControlCard(
-                        uiState = uiState,
-                        onRefresh = onRefresh,
-                        onSelectWeek = onSelectWeek,
-                        modifier = Modifier.padding(bottom = 10.dp),
-                    )
-                }
-
-                if (uiState.connectionStatus == TimetableConnectionStatus.INTERACTION_REQUIRED &&
-                    activeInteractionSession != null
-                ) {
-                    item {
-                        InteractionChallengeCard(
-                            reason = uiState.interactionReason ?: "需要图形或短信验证码验证",
-                            onOpenWebView = { showWebViewDialog = true },
-                            modifier = Modifier.padding(bottom = 10.dp),
-                        )
-                    }
-                } else if (uiState.connectionStatus == TimetableConnectionStatus.INVALID_CREDENTIALS) {
-                    item {
-                        InvalidCredentialBanner(
-                            message = uiState.errorMessage ?: "学号或统一认证密码错误",
-                            onOpenAccount = onOpenSchoolAccount,
-                            modifier = Modifier.padding(bottom = 10.dp),
-                        )
-                    }
-                } else if (!uiState.errorMessage.isNullOrBlank()) {
-                    item {
-                        ErrorStatusBanner(
-                            message = uiState.errorMessage,
-                            isOfflineFallback = uiState.isOfflineFallback,
-                            onRetry = onRefresh,
-                            modifier = Modifier.padding(bottom = 10.dp),
-                        )
-                    }
-                }
-
-                if (uiState.isOfflineFallback && uiState.weekData != null) {
-                    item {
-                        Surface(
-                            color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.7f),
-                            contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
-                            shape = MaterialTheme.shapes.medium,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(bottom = 10.dp),
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Rounded.CloudOff,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(18.dp),
-                                )
-                                val syncedText = formatTimestamp(uiState.fetchedAtEpochMillis)
-                                Text(
-                                    text = if (syncedText != null) {
-                                        "当前显示本机离线缓存（同步于 $syncedText）"
-                                    } else {
-                                        "当前显示本机离线缓存"
-                                    },
-                                    style = MaterialTheme.typography.bodySmall,
-                                )
-                            }
-                        }
-                    }
-                }
-
-                val weekData = uiState.weekData
-                if (weekData != null) {
-                    if (weekData.isEmpty) {
-                        item {
-                            ExpressiveGroupedCard(
-                                position = GroupedCardPosition.SINGLE,
-                                modifier = Modifier.padding(bottom = 12.dp),
-                            ) {
-                                Column(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(20.dp),
-                                    verticalArrangement = Arrangement.spacedBy(6.dp),
-                                ) {
-                                    Text(
-                                        text = "${weekData.term.label} · 第 ${weekData.week} 周暂无排课记录",
-                                        style = MaterialTheme.typography.titleMedium,
-                                    )
-                                    Text(
-                                        text = "学校服务端返回完整 7 天无课程安排；可切换上下周或点击右上角刷新确认。",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    )
-                                }
-                            }
-                        }
-                    } else {
-                        item {
-                            TimetableWeekGrid(
-                                weekData = weekData,
-                                onSelectMeeting = { selectedMeeting = it },
-                                modifier = Modifier.padding(bottom = 14.dp),
-                            )
-                        }
-                    }
-                } else if (!uiState.isRefreshing &&
-                    uiState.connectionStatus != TimetableConnectionStatus.ERROR
-                ) {
-                    item {
-                        ExpressiveHeroCard(
-                            title = "等待初次同步",
-                            subtitle = "点击「同步课表」将仅针对 cas.upc.edu.cn 提交一次统一认证（遇验证码自动转入受控安全页），成功后离线缓存本周课程。",
-                            icon = Icons.Rounded.CalendarMonth,
-                            badgeText = accountState.status.label,
-                            onClick = onRefresh,
-                            modifier = Modifier.padding(bottom = 14.dp),
-                        )
-                    }
-                }
-            }
-
-            item {
-                ExpressiveGroupedCard(
-                    position = GroupedCardPosition.TOP,
-                ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        Text(
-                            text = "学校官方作息时间（2020-05-25 调整版）",
-                            style = MaterialTheme.typography.titleMedium,
-                        )
-                        ScheduleLine("上午 1–5 节", "08:00 – 12:20")
-                        ScheduleLine("下午 6–9 节", "14:00 – 17:30")
-                        ScheduleLine("晚间 10–12 节", "19:00 – 21:25")
-                        ScheduleLine("第 13–14 节", "时间待确认")
-                    }
-                }
-            }
-
-            item {
-                ExpressiveListRow(
-                    title = if (accountState.status == AccountStatus.SAVED_UNVERIFIED) {
-                        "管理学校账号"
-                    } else {
-                        "前往配置学校账号"
-                    },
-                    subtitle = "仅向精确校验的 cas.upc.edu.cn HTTPS 表单提交认证",
-                    leadingIcon = Icons.Rounded.Schedule,
-                    position = GroupedCardPosition.BOTTOM,
-                    trailingContent = {
-                        FilledTonalButton(onClick = onOpenSchoolAccount) {
-                            Text("打开")
-                        }
-                    },
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun TimetableControlCard(
-    uiState: TimetableUiState,
-    onRefresh: () -> Unit,
-    onSelectWeek: (TimetableTermInfo, Int) -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    val selectedTerm = uiState.selectedTerm
-    val selectedWeek = uiState.selectedWeek
-    var showTermMenu by remember { mutableStateOf(false) }
-    var showWeekMenu by remember { mutableStateOf(false) }
-
-    ExpressiveGroupedCard(
-        position = GroupedCardPosition.SINGLE,
-        modifier = modifier,
-    ) {
         Column(
             modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 14.dp, vertical = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
+                .fillMaxSize()
+                .padding(top = innerPadding.calculateTopPadding()),
         ) {
-            if (uiState.terms.isNotEmpty() && selectedTerm != null) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Box {
-                        OutlinedButton(
-                            onClick = { showTermMenu = true },
-                            enabled = uiState.terms.size > 1 && !uiState.isRefreshing,
-                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
-                        ) {
-                            Text(
-                                text = selectedTerm.label,
-                                style = MaterialTheme.typography.labelLarge,
-                            )
-                            if (uiState.terms.size > 1) {
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Icon(
-                                    imageVector = Icons.Rounded.ExpandMore,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(18.dp),
-                                )
-                            }
-                        }
-                        DropdownMenu(
-                            expanded = showTermMenu,
-                            onDismissRequest = { showTermMenu = false },
-                        ) {
-                            uiState.terms.forEach { term ->
-                                DropdownMenuItem(
-                                    text = { Text(term.label) },
-                                    onClick = {
-                                        showTermMenu = false
-                                        val targetWeek = (selectedWeek ?: 1).coerceIn(1, term.totalWeeks)
-                                        onSelectWeek(term, targetWeek)
-                                    },
-                                )
-                            }
-                        }
-                    }
+            if (uiState.isRefreshing) {
+                LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+            }
 
-                    if (uiState.currentSchoolWeek != null) {
-                        ExpressiveStatusBadge(
-                            text = "学校当前第 ${uiState.currentSchoolWeek} 周",
-                            containerColor = MaterialTheme.colorScheme.secondaryContainer,
-                            contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+            if (uiState.isOfflineFallback) {
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = MaterialTheme.colorScheme.secondaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 6.dp),
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Icon(Icons.Rounded.CloudOff, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Text(
+                            text = "当前显示离线缓存课表",
+                            style = MaterialTheme.typography.labelLarge,
                         )
                     }
                 }
             }
 
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
+            if (uiState.connectionStatus == TimetableConnectionStatus.INTERACTION_REQUIRED &&
+                activeInteractionSession != null
             ) {
-                if (selectedTerm != null && selectedWeek != null) {
+                Surface(
+                    shape = RoundedCornerShape(20.dp),
+                    color = MaterialTheme.colorScheme.tertiaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 6.dp),
+                ) {
                     Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 14.dp, vertical = 10.dp),
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
                     ) {
-                        IconButton(
-                            onClick = { onSelectWeek(selectedTerm, selectedWeek - 1) },
-                            enabled = selectedWeek > 1 && !uiState.isRefreshing,
-                        ) {
-                            Icon(
-                                imageVector = Icons.AutoMirrored.Rounded.KeyboardArrowLeft,
-                                contentDescription = "上一周",
-                            )
+                        Text(
+                            text = uiState.interactionReason ?: "需要完成学校安全验证",
+                            style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier.weight(1f),
+                        )
+                        FilledTonalButton(onClick = { showWebViewDialog = true }) {
+                            Icon(Icons.Rounded.LockOpen, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("继续验证")
                         }
-                        Box {
-                            FilledTonalButton(
-                                onClick = { showWeekMenu = true },
-                                enabled = !uiState.isRefreshing,
-                                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
-                            ) {
-                                Text(
-                                    text = if (selectedWeek == uiState.currentSchoolWeek) {
-                                        "第 $selectedWeek 周 · 本周"
-                                    } else {
-                                        "第 $selectedWeek 周 / 共 ${selectedTerm.totalWeeks} 周"
-                                    },
-                                    style = MaterialTheme.typography.labelLarge,
-                                )
+                    }
+                }
+            }
+
+            if (!uiState.errorMessage.isNullOrBlank()) {
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = MaterialTheme.colorScheme.errorContainer,
+                    contentColor = MaterialTheme.colorScheme.onErrorContainer,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 6.dp),
+                ) {
+                    Text(
+                        text = uiState.errorMessage,
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.padding(12.dp),
+                    )
+                }
+            }
+
+            when {
+                accountState.status != AccountStatus.SAVED_UNVERIFIED -> {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(horizontal = 16.dp, vertical = 12.dp),
+                    ) {
+                        HeroAtAGlanceCard(onClick = onOpenSchoolAccount) {
+                            Text(
+                                text = "请先配置学校账号",
+                                style = MaterialTheme.typography.headlineSmall,
+                                fontWeight = FontWeight.Bold,
+                            )
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Text(
+                                text = "登录统一身份认证后即可查看本学期完整课表。",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            Spacer(modifier = Modifier.height(12.dp))
+                            Button(onClick = onOpenSchoolAccount) {
+                                Text("前往学校账号")
                             }
-                            DropdownMenu(
-                                expanded = showWeekMenu,
-                                onDismissRequest = { showWeekMenu = false },
+                        }
+                    }
+                }
+                uiState.weekData == null -> {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(horizontal = 16.dp, vertical = 12.dp),
+                    ) {
+                        HeroAtAGlanceCard {
+                            Text(
+                                text = "暂未同步课表数据",
+                                style = MaterialTheme.typography.headlineSmall,
+                                fontWeight = FontWeight.Bold,
+                            )
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Text(
+                                text = "点击下方按钮从教务课表系统获取本周课程。",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            Spacer(modifier = Modifier.height(12.dp))
+                            Button(onClick = onRefresh, enabled = !uiState.isRefreshing) {
+                                Text(if (uiState.isRefreshing) "同步中…" else "立即同步课表")
+                            }
+                        }
+                    }
+                }
+                else -> {
+                    HorizontalPager(
+                        state = pagerState,
+                        modifier = Modifier.fillMaxSize(),
+                    ) { page ->
+                        val weekNumber = page + 1
+                        val termKey = selectedTerm?.let { "${it.year}_${it.term}_$weekNumber" }
+                        val pageWeekData = termKey?.let { cachedWeeks[it] }
+                            ?: uiState.weekData.takeIf { it.week == weekNumber }
+
+                        if (pageWeekData == null) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .padding(bottom = bottomNavPadding),
+                                contentAlignment = Alignment.Center,
                             ) {
-                                (1..selectedTerm.totalWeeks).forEach { weekNum ->
-                                    DropdownMenuItem(
-                                        text = {
-                                            Text(
-                                                if (weekNum == uiState.currentSchoolWeek) {
-                                                    "第 $weekNum 周（本周）"
-                                                } else {
-                                                    "第 $weekNum 周"
-                                                },
-                                            )
-                                        },
-                                        onClick = {
-                                            showWeekMenu = false
-                                            onSelectWeek(selectedTerm, weekNum)
-                                        },
+                                CircularProgressIndicator()
+                            }
+                        } else if (viewMode == TimetableViewMode.GRID) {
+                            LazyColumn(
+                                modifier = Modifier.fillMaxSize(),
+                                contentPadding = PaddingValues(
+                                    start = 10.dp,
+                                    end = 10.dp,
+                                    top = 4.dp,
+                                    bottom = bottomNavPadding + 18.dp,
+                                ),
+                            ) {
+                                item {
+                                    SmartWeekGridCard(
+                                        weekData = pageWeekData,
+                                        onSelectMeeting = { selectedMeeting = it },
                                     )
                                 }
                             }
-                        }
-                        IconButton(
-                            onClick = { onSelectWeek(selectedTerm, selectedWeek + 1) },
-                            enabled = selectedWeek < selectedTerm.totalWeeks && !uiState.isRefreshing,
-                        ) {
-                            Icon(
-                                imageVector = Icons.AutoMirrored.Rounded.KeyboardArrowRight,
-                                contentDescription = "下一周",
+                        } else {
+                            AgendaWeekList(
+                                weekData = pageWeekData,
+                                bottomNavPadding = bottomNavPadding,
+                                onSelectMeeting = { selectedMeeting = it },
                             )
                         }
                     }
-                } else {
-                    Text(
-                        text = "同步当前学校周课表",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-
-                Button(
-                    onClick = onRefresh,
-                    enabled = !uiState.isRefreshing,
-                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-                ) {
-                    Text(if (uiState.weekData == null) "同步课表" else "刷新")
                 }
             }
         }
@@ -654,153 +523,53 @@ private fun TimetableControlCard(
 }
 
 @Composable
-private fun InteractionChallengeCard(
-    reason: String,
-    onOpenWebView: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    Surface(
-        color = MaterialTheme.colorScheme.tertiaryContainer,
-        contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
-        shape = MaterialTheme.shapes.large,
-        modifier = modifier.fillMaxWidth(),
-    ) {
-        Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                Icon(imageVector = Icons.Rounded.LockOpen, contentDescription = null)
-                Text(
-                    text = "需要完成学校安全验证",
-                    style = MaterialTheme.typography.titleMedium,
-                )
-            }
-            Text(
-                text = "$reason。客户端已自动停止密码提交并保留离线缓存，请使用唯一受控 HTTPS 验证页完成一次登录。",
-                style = MaterialTheme.typography.bodySmall,
-            )
-            Button(onClick = onOpenWebView) {
-                Text("打开受控安全验证页")
-            }
-        }
-    }
-}
-
-@Composable
-private fun InvalidCredentialBanner(
-    message: String,
-    onOpenAccount: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    Surface(
-        color = MaterialTheme.colorScheme.errorContainer,
-        contentColor = MaterialTheme.colorScheme.onErrorContainer,
-        shape = MaterialTheme.shapes.large,
-        modifier = modifier.fillMaxWidth(),
-    ) {
-        Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                Icon(imageVector = Icons.Rounded.WarningAmber, contentDescription = null)
-                Text("学号或密码验证失败", style = MaterialTheme.typography.titleMedium)
-            }
-            Text(text = message, style = MaterialTheme.typography.bodySmall)
-            FilledTonalButton(onClick = onOpenAccount) {
-                Text("前往核对学校账号")
-            }
-        }
-    }
-}
-
-@Composable
-private fun ErrorStatusBanner(
-    message: String,
-    isOfflineFallback: Boolean,
-    onRetry: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    Surface(
-        color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.85f),
-        contentColor = MaterialTheme.colorScheme.onErrorContainer,
-        shape = MaterialTheme.shapes.medium,
-        modifier = modifier.fillMaxWidth(),
-    ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween,
-        ) {
-            Text(
-                text = if (isOfflineFallback) "同步失败（$message）" else message,
-                style = MaterialTheme.typography.bodySmall,
-                modifier = Modifier.weight(1f),
-            )
-            TextButton(onClick = onRetry) {
-                Text("重试")
-            }
-        }
-    }
-}
-
-@Composable
-private fun TimetableWeekGrid(
+private fun SmartWeekGridCard(
     weekData: TimetableWeek,
     onSelectMeeting: (CourseMeeting) -> Unit,
-    modifier: Modifier = Modifier,
 ) {
     val maxPeriod = maxOf(12, weekData.meetings.maxOfOrNull { it.endPeriod } ?: 12).coerceAtMost(14)
     val slotHeight = 52.dp
     val todayIso = remember {
         LocalDate.now(ZoneId.of("Asia/Shanghai")).format(DateTimeFormatter.ISO_LOCAL_DATE)
     }
-
     val colorSlots = listOf(
         MaterialTheme.colorScheme.primaryContainer to MaterialTheme.colorScheme.onPrimaryContainer,
         MaterialTheme.colorScheme.secondaryContainer to MaterialTheme.colorScheme.onSecondaryContainer,
         MaterialTheme.colorScheme.tertiaryContainer to MaterialTheme.colorScheme.onTertiaryContainer,
-        MaterialTheme.colorScheme.surfaceContainerHighest to MaterialTheme.colorScheme.onSurface,
+        MaterialTheme.colorScheme.surfaceContainerHigh to MaterialTheme.colorScheme.onSurface,
     )
 
-    ExpressiveGroupedCard(
-        position = GroupedCardPosition.SINGLE,
-        modifier = modifier,
+    val columnWeights = weekData.days.map { day ->
+        if (day.weekday in setOf(6, 7) && day.meetings.isEmpty()) 0.58f else 1.2f
+    }
+
+    Surface(
+        shape = RoundedCornerShape(28.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerLowest,
+        modifier = Modifier.fillMaxWidth(),
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(8.dp),
         ) {
-            // Day Header: Sunday -> Saturday
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(bottom = 6.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Box(modifier = Modifier.width(34.dp))
-                weekData.days.forEachIndexed { index, day ->
+                Box(modifier = Modifier.width(28.dp))
+                weekData.days.forEachIndexed { idx, day ->
                     val isToday = day.dateIso == todayIso
-                    val dayTitle = DAY_TITLES.getOrElse(index) { "" }
+                    val dayTitle = weekdayShortTitle(day.weekday)
                     val shortDate = day.dateIso.drop(5).replace('-', '/')
                     Column(
                         modifier = Modifier
-                            .weight(1f)
+                            .weight(columnWeights[idx])
                             .clip(RoundedCornerShape(10.dp))
                             .background(
-                                if (isToday) {
-                                    MaterialTheme.colorScheme.primaryContainer
-                                } else {
-                                    Color.Transparent
-                                },
+                                if (isToday) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
                             )
                             .padding(vertical = 4.dp),
                         horizontalAlignment = Alignment.CenterHorizontally,
@@ -814,6 +583,7 @@ private fun TimetableWeekGrid(
                             } else {
                                 MaterialTheme.colorScheme.onSurface
                             },
+                            maxLines = 1,
                         )
                         Text(
                             text = shortDate,
@@ -823,16 +593,16 @@ private fun TimetableWeekGrid(
                             } else {
                                 MaterialTheme.colorScheme.onSurfaceVariant
                             },
+                            maxLines = 1,
                         )
                     }
                 }
             }
 
-            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f))
 
             Row(modifier = Modifier.fillMaxWidth()) {
-                // Left Period Axis (1..maxPeriod)
-                Column(modifier = Modifier.width(34.dp)) {
+                Column(modifier = Modifier.width(28.dp)) {
                     for (period in 1..maxPeriod) {
                         Box(
                             modifier = Modifier
@@ -849,11 +619,10 @@ private fun TimetableWeekGrid(
                     }
                 }
 
-                // 7 Day Columns
-                weekData.days.forEach { day ->
+                weekData.days.forEachIndexed { idx, day ->
                     Box(
                         modifier = Modifier
-                            .weight(1f)
+                            .weight(columnWeights[idx])
                             .height(slotHeight * maxPeriod),
                     ) {
                         Column(modifier = Modifier.fillMaxSize()) {
@@ -864,7 +633,7 @@ private fun TimetableWeekGrid(
                                         .height(slotHeight)
                                         .border(
                                             width = 0.5.dp,
-                                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f),
+                                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f),
                                         ),
                                 )
                             }
@@ -920,6 +689,91 @@ private fun TimetableWeekGrid(
     }
 }
 
+@Composable
+private fun AgendaWeekList(
+    weekData: TimetableWeek,
+    bottomNavPadding: Dp,
+    onSelectMeeting: (CourseMeeting) -> Unit,
+) {
+    val activeDays = weekData.days.filter { it.meetings.isNotEmpty() }
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(
+            start = 16.dp,
+            end = 16.dp,
+            top = 8.dp,
+            bottom = bottomNavPadding + 24.dp,
+        ),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        if (activeDays.isEmpty()) {
+            item {
+                HeroAtAGlanceCard {
+                    Text("本周暂无排课", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                }
+            }
+        } else {
+            activeDays.forEach { day ->
+                item(key = "header_${day.weekday}_${day.dateIso}") {
+                    Text(
+                        text = "${weekdayFullTitle(day.weekday)} · ${day.dateIso}",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.padding(top = 6.dp, start = 4.dp),
+                    )
+                }
+                day.meetings.forEach { meeting ->
+                    item(key = "agenda_${day.weekday}_${meeting.startPeriod}_${meeting.courseName}") {
+                        Surface(
+                            shape = RoundedCornerShape(22.dp),
+                            color = MaterialTheme.colorScheme.surfaceContainerLowest,
+                            onClick = { onSelectMeeting(meeting) },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 16.dp, vertical = 14.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            ) {
+                                Surface(
+                                    shape = RoundedCornerShape(14.dp),
+                                    color = MaterialTheme.colorScheme.secondaryContainer,
+                                    contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                                ) {
+                                    Text(
+                                        text = meeting.periodRangeLabel,
+                                        style = MaterialTheme.typography.labelLarge,
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                                    )
+                                }
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = meeting.courseName,
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.SemiBold,
+                                    )
+                                    Text(
+                                        text = listOfNotNull(
+                                            meeting.effectiveTimeText,
+                                            meeting.location,
+                                            meeting.teacher,
+                                        ).joinToString(" · "),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun CourseDetailBottomSheet(
@@ -930,6 +784,7 @@ private fun CourseDetailBottomSheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
                 .padding(horizontal = 20.dp)
                 .padding(bottom = 28.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
@@ -937,14 +792,12 @@ private fun CourseDetailBottomSheet(
             Text(
                 text = meeting.courseName,
                 style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Bold,
             )
             DetailLine("上课日期", meeting.dateIso)
             DetailLine("节次", "${meeting.periodRangeLabel}（${meeting.effectiveTimeText}）")
             if (meeting.sectionsSource == "lessArr_split_noncontiguous") {
-                DetailLine(
-                    "完整原始节次",
-                    meeting.sourcePeriods.joinToString("、") { "第 $it 节" },
-                )
+                DetailLine("完整原始节次", meeting.sourcePeriods.joinToString("、") { "第 $it 节" })
             }
             DetailLine("上课地点", meeting.location ?: "未提供地点")
             DetailLine("任课教师", meeting.teacher ?: "未提供教师")
@@ -977,26 +830,24 @@ private fun DetailLine(label: String, value: String) {
     }
 }
 
-@Composable
-private fun ScheduleLine(label: String, time: String) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
-    ) {
-        Text(label, style = MaterialTheme.typography.bodyMedium)
-        Text(
-            text = time,
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-    }
+private fun weekdayShortTitle(weekday: Int): String = when (weekday) {
+    1 -> "一"
+    2 -> "二"
+    3 -> "三"
+    4 -> "四"
+    5 -> "五"
+    6 -> "六"
+    7 -> "日"
+    else -> weekday.toString()
 }
 
-private fun formatTimestamp(epochMillis: Long?): String? {
-    if (epochMillis == null || epochMillis <= 0L) return null
-    return Instant.ofEpochMilli(epochMillis)
-        .atZone(ZoneId.of("Asia/Shanghai"))
-        .format(DateTimeFormatter.ofPattern("MM-dd HH:mm"))
+private fun weekdayFullTitle(weekday: Int): String = when (weekday) {
+    1 -> "周一"
+    2 -> "周二"
+    3 -> "周三"
+    4 -> "周四"
+    5 -> "周五"
+    6 -> "周六"
+    7 -> "周日"
+    else -> "第 $weekday 天"
 }
-
-private val DAY_TITLES = listOf("周日", "周一", "周二", "周三", "周四", "周五", "周六")
