@@ -36,3 +36,8 @@
   - Android：`cd android && ./gradlew :app:assembleDebug :app:testDebugUnitTest`
   - iOS：`cd ios && xcodegen generate && xcodebuild -project UPCPocket.xcodeproj -scheme UPCPocket -destination 'platform=iOS Simulator,name=iPhone 17' CODE_SIGNING_ALLOWED=NO build test`
 - 交付报告只陈述本轮实际运行观察到的文件、构建结果与测试输出，不虚构未验证项。
+
+## 4. 远端同步与高频 Release 规范
+
+- 每完成一个可独立验证的功能迭代或重要修复，及时将改动同步推送到 GitHub `origin/main`。
+- 对可实测版本主动推送 SemVer 标签（如正式补丁 `v0.3.1` 或测试版 `v0.4.0-beta.1`），触发 `.github/workflows/release.yml` 自动签名打包并发布 GitHub Release（含直接下载 APK 与校验文件），方便用户直接下载或通过应用内「设置 → 检查更新」升级测试；新发布前确保 `android/app/build.gradle.kts` 及 `release.yml` 解析出的 `versionCode` 严格单调递增，不触发降级安装失败。

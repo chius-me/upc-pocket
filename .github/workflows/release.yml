@@ -58,6 +58,7 @@ jobs:
         run: |
           python3 - <<'PY'
           import os
+          import pathlib
           import re
           import sys
 
@@ -73,7 +74,10 @@ jobs:
                   sys.exit(f"Invalid version_code '{raw_code}'. Must be a positive integer.")
               version_code = raw_code
           else:
-              version_code = str(max(1, int(os.environ["RUN_NUMBER"])))
+              gradle_text = pathlib.Path("android/app/build.gradle.kts").read_text(encoding="utf-8")
+              gradle_match = re.search(r"val\s+resolvedVersionCode[\s\S]*?\?:\s*([1-9][0-9]*)", gradle_text)
+              gradle_code = int(gradle_match.group(1)) if gradle_match else 3
+              version_code = str(max(gradle_code, 2 + int(os.environ["RUN_NUMBER"])))
 
           is_prerelease = (os.environ["INPUT_PRERELEASE"].lower() == "true") or ("-" in version_name)
 
@@ -411,6 +415,7 @@ jobs:
 
       - name: Prepare release bundle, checksums, and release notes
         env:
+          REPO: ${{ github.repository }}
           TAG: ${{ needs.prepare.outputs.tag }}
           VERSION_NAME: ${{ needs.prepare.outputs.version_name }}
           VERSION_CODE: ${{ needs.prepare.outputs.version_code }}
@@ -441,6 +446,7 @@ jobs:
           ## UPC Pocket ${TAG}
 
           - **版本号**：\`${VERSION_NAME}\`（build \`${VERSION_CODE}\`）
+          - **Android APK 直链下载**：[${ANDROID_APK}](https://github.com/${REPO}/releases/download/${TAG}/${ANDROID_APK})
           - **安全基线门禁**：已通过 \`scripts/check_security_baseline.sh\`（禁用云备份、精确两主机明文例外、无明文密钥入库）
 
           ### 构建产物状态
