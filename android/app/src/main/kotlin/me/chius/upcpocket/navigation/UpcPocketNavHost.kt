@@ -6,6 +6,7 @@ import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
@@ -115,7 +116,9 @@ fun UpcPocketNavHost(
                 enter = slideInVertically { it },
                 exit = slideOutVertically { it },
             ) {
-                NavigationBar {
+                NavigationBar(
+                    containerColor = MaterialTheme.colorScheme.surfaceContainer,
+                ) {
                     TopLevelDestination.entries.forEach { destination ->
                         val selected = currentRoute == destination.route
                         NavigationBarItem(
@@ -176,7 +179,6 @@ fun UpcPocketNavHost(
                     uiState = timetableState,
                     bottomNavPadding = bottomNavPadding,
                     onOpenSchoolAccount = { navController.navigate(AppRoute.SCHOOL_ACCOUNT) },
-                    onOpenAcademicCalendar = { navController.navigate(AppRoute.ACADEMIC_CALENDAR) },
                     onRefresh = { scope.launch { container.timetableRepository.refresh() } },
                     onSelectWeek = { term, week ->
                         scope.launch { container.timetableRepository.selectWeek(term, week) }
@@ -192,6 +194,7 @@ fun UpcPocketNavHost(
                 CampusScreen(
                     campus = preferences.campus,
                     accountState = accountState,
+                    timetableState = timetableState,
                     gradesState = gradesState,
                     shiguangState = shiguangState,
                     librarySeatState = librarySeatState,
@@ -202,6 +205,8 @@ fun UpcPocketNavHost(
                         scope.launch { container.preferencesRepository.setCampus(campus) }
                     },
                     onOpenSettings = { navController.navigate(AppRoute.SETTINGS) },
+                    onOpenSchoolAccount = { navController.navigate(AppRoute.SCHOOL_ACCOUNT) },
+                    onOpenTimetableTab = { navigateToTopLevel(TopLevelDestination.TIMETABLE) },
                     onOpenGrades = { navController.navigate(AppRoute.GRADES) },
                     onOpenShiguang = { navController.navigate(AppRoute.SHIGUANG) },
                     onOpenLibrarySeat = { navController.navigate(AppRoute.LIBRARY_SEAT) },

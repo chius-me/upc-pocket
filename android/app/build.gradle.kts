@@ -18,7 +18,7 @@ val resolvedVersionCode = rawVersionCode?.let { raw ->
         "Invalid appVersionCode '$raw': expected integer in 1..999999999"
     }
     parsed
-} ?: 3
+} ?: 4
 
 val rawVersionName = (providers.gradleProperty("appVersionName").orNull
     ?: providers.environmentVariable("APP_VERSION_NAME").orNull)
@@ -28,7 +28,7 @@ val resolvedVersionName = rawVersionName?.also { name ->
     require(name.matches(Regex("""^[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?$"""))) {
         "Invalid appVersionName '$name': expected SemVer"
     }
-} ?: "0.3.0"
+} ?: "0.3.1"
 
 val keystoreProps = Properties().apply {
     val propsFile = rootProject.file("keystore.properties")

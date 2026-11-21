@@ -20,9 +20,9 @@ enum class GroupedCardPosition {
 
     fun shape(): RoundedCornerShape = when (this) {
         SINGLE -> RoundedCornerShape(24.dp)
-        TOP -> RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp, bottomStart = 6.dp, bottomEnd = 6.dp)
-        MIDDLE -> RoundedCornerShape(6.dp)
-        BOTTOM -> RoundedCornerShape(topStart = 6.dp, topEnd = 6.dp, bottomStart = 24.dp, bottomEnd = 24.dp)
+        TOP -> RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp, bottomStart = 4.dp, bottomEnd = 4.dp)
+        MIDDLE -> RoundedCornerShape(4.dp)
+        BOTTOM -> RoundedCornerShape(topStart = 4.dp, topEnd = 4.dp, bottomStart = 24.dp, bottomEnd = 24.dp)
     }
 
     companion object {

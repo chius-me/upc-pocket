@@ -15,20 +15,21 @@ Android V2 默认采用低饱和清透画布（浅色背景 `#EEF3F8`，纯白 `
 
 ---
 
-## 2. Android：Google Pixel Bento & Material 3 Expressive 规范
+## 2. Android：Google M3 Expressive（对标 Gmail / Chrome / Google Phone）
 
-对标 Google 原生软件（Pixel Weather / Google Wallet / Google Calendar）的高对比度与信息密度：
+参考 Gmail、Chrome 与 Google Phone 在 Material 3 Expressive 下的层级节奏，收敛视觉噪音并保持高对比清晰度：
 
-- **Canvas-First 层次分离**：主页面背景采用 `background`（浅色 `#EEF3F8`），核心指标卡与 Hero 卡采用纯白 `surfaceContainerLowest` 搭配 `28.dp` / `32.dp` 大圆角（Squircle）与清晰字重对比，避免“灰底叠灰卡”的沉闷感。
-- **单行顶栏 (`GoogleTopBar`)**：
-  - 顶级页面使用单行 `GoogleTopBar`，左侧显示页面大标题与上下文状态胶囊（如 `第 X 周`），右侧固定圆形账号/设置头像入口，释放首屏宝贵纵向空间。
-  - 课表页采用紧凑周切换顶栏（`第 X 周 ▾` BottomSheet、`回本周`、网格/日程流切换、校历、刷新）。
+- **Canvas-First 层次分离**：主页面背景采用低饱和浅色画布 `background`（`#EEF3F8`），前景所有分组列表卡片（`ExpressiveGroupedCard` / `ExpressiveListRow`）与概览条均统一采用纯白 `surfaceContainerLowest`（`#FFFFFF`），彻底消除同色灰底叠灰卡与区块感杂乱。
+- **M3 Expressive 分段圆角列表规范**：组内首尾外圆角 `24.dp`、相邻内圆角 `4.dp`、行间距 `2.dp`、组间距 `14.dp`，搭配 `40.dp` 软色调圆形图标容器与紧凑徽标，取代过去满屏铺排的大型方块宫格。
+- **Google 悬浮搜索胶囊顶栏 (`GoogleSearchPillBar`)**：
+  - `今日` 与 `校园` 顶级页采用 `52.dp` 高胶囊顶栏（`surfaceContainerHigh`），集成搜索图标、上下文状态胶囊（如 `第 X 周`）与**唯一**右侧账号/设置圆形头像入口，消除设置齿轮与头像双重重复按钮；点按搜索栏可即时模糊检索全端服务与本周课程。
+  - 课表页采用紧凑单行顶栏（`第 X 周 ▾` BottomSheet、`回本周`、网格/日程流切换、刷新）。
 - **标准 3-Tab `NavigationBar`**：
-  - 仅在 `今日 / 课表 / 校园` 3 个顶级页面显示底部 `NavigationBar`。
+  - 仅在 `今日 / 课表 / 校园` 3 个顶级页面显示底部 `NavigationBar`（采用 `surfaceContainer` 区分于画布层）。
   - 进入成绩、校园卡钱包、图书馆选座、空教室、电费、石光、校历、设置与学校账号页时平滑隐藏底栏，专注内容全屏呈现，并支持 Android 14+ 原生预测性返回与 Edge-to-Edge。
 - **正文零工程样板文**：
   - 主界面与各业务卡片禁止堆砌 `allowBackup`、明文例外、免责声明等技术解释文案；隐私与加密细节统一收口至「关于」页面，账号页诚实维持「已保存（未验证）」语义。
-- **设置页分层与配色选择器**：保留分段分组圆角卡（`24.dp`/`6.dp`）与 4 枚交互式配色圆点按钮。
+- **设置页分层与配色选择器**：沿用统一分段分组圆角卡（`24.dp`/`4.dp`）与 4 枚交互式配色圆点按钮。
 
 ---
 

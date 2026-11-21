@@ -5,7 +5,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -13,11 +12,11 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Person
+import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -34,91 +33,98 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 
 /**
- * Single-row Google-native top header with title, optional contextual pill, actions, and
- * a circular Google-style account/settings avatar button on the trailing edge.
+ * Gmail / Google Phone-inspired floating pill search bar with an embedded trailing context pill
+ * and a single circular account avatar button for opening Settings.
  */
 @Composable
-fun GoogleTopBar(
-    title: String,
+fun GoogleSearchPillBar(
+    placeholder: String,
     isAccountConfigured: Boolean,
+    onBarClick: () -> Unit,
     onAccountClick: () -> Unit,
     modifier: Modifier = Modifier,
-    subtitleChip: String? = null,
-    onChipClick: (() -> Unit)? = null,
+    trailingChip: String? = null,
     accountBadgeText: String? = null,
-    actions: @Composable RowScope.() -> Unit = {},
 ) {
-    Row(
+    Box(
         modifier = modifier
             .fillMaxWidth()
             .statusBarsPadding()
-            .padding(horizontal = 20.dp, vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween,
+            .padding(horizontal = 16.dp, vertical = 8.dp),
     ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-            modifier = Modifier.weight(1f),
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(52.dp),
+            shape = CircleShape,
+            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+            contentColor = MaterialTheme.colorScheme.onSurface,
+            onClick = onBarClick,
         ) {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.headlineLarge,
-                color = MaterialTheme.colorScheme.onSurface,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            if (!subtitleChip.isNullOrBlank()) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = 16.dp, end = 9.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.Search,
+                    contentDescription = "搜索",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(20.dp),
+                )
+                Text(
+                    text = placeholder,
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f),
+                )
+                if (!trailingChip.isNullOrBlank()) {
+                    Surface(
+                        shape = CircleShape,
+                        color = MaterialTheme.colorScheme.secondaryContainer,
+                        contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                    ) {
+                        Text(
+                            text = trailingChip,
+                            style = MaterialTheme.typography.labelMedium,
+                            maxLines = 1,
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                        )
+                    }
+                }
                 Surface(
                     shape = CircleShape,
-                    color = MaterialTheme.colorScheme.secondaryContainer,
-                    contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
-                    onClick = { onChipClick?.invoke() },
-                    enabled = onChipClick != null,
-                ) {
-                    Text(
-                        text = subtitleChip,
-                        style = MaterialTheme.typography.labelMedium,
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
-                        maxLines = 1,
-                    )
-                }
-            }
-        }
-
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-        ) {
-            actions()
-            Surface(
-                shape = CircleShape,
-                color = if (isAccountConfigured) {
-                    MaterialTheme.colorScheme.primaryContainer
-                } else {
-                    MaterialTheme.colorScheme.surfaceContainerHigh
-                },
-                contentColor = if (isAccountConfigured) {
-                    MaterialTheme.colorScheme.onPrimaryContainer
-                } else {
-                    MaterialTheme.colorScheme.onSurfaceVariant
-                },
-                onClick = onAccountClick,
-                modifier = Modifier.size(40.dp),
-            ) {
-                Box(contentAlignment = Alignment.Center) {
-                    if (!accountBadgeText.isNullOrBlank()) {
-                        Text(
-                            text = accountBadgeText,
-                            style = MaterialTheme.typography.labelLarge,
-                            fontWeight = FontWeight.Bold,
-                        )
+                    color = if (isAccountConfigured) {
+                        MaterialTheme.colorScheme.primaryContainer
                     } else {
-                        Icon(
-                            imageVector = Icons.Rounded.Person,
-                            contentDescription = "账号与设置",
-                            modifier = Modifier.size(20.dp),
-                        )
+                        MaterialTheme.colorScheme.surfaceContainerLowest
+                    },
+                    contentColor = if (isAccountConfigured) {
+                        MaterialTheme.colorScheme.onPrimaryContainer
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    },
+                    onClick = onAccountClick,
+                    modifier = Modifier.size(34.dp),
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        if (!accountBadgeText.isNullOrBlank()) {
+                            Text(
+                                text = accountBadgeText,
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.Bold,
+                            )
+                        } else {
+                            Icon(
+                                imageVector = Icons.Rounded.Person,
+                                contentDescription = "账号与设置",
+                                modifier = Modifier.size(18.dp),
+                            )
+                        }
                     }
                 }
             }
@@ -127,7 +133,76 @@ fun GoogleTopBar(
 }
 
 /**
- * Large Google Pixel Bento squircle tile with headline numeric/status display, optional unit & progress.
+ * Compact 3-column summary metric tile used on the Today screen above the At-a-Glance Hero card.
+ */
+@Composable
+fun CompactGlanceChip(
+    label: String,
+    value: String,
+    icon: ImageVector,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    unit: String? = null,
+    iconTint: Color = MaterialTheme.colorScheme.primary,
+) {
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(20.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerLowest,
+        contentColor = MaterialTheme.colorScheme.onSurface,
+        onClick = onClick,
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(5.dp),
+            ) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = iconTint,
+                    modifier = Modifier.size(15.dp),
+                )
+                Text(
+                    text = label,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            Row(
+                verticalAlignment = Alignment.Bottom,
+                horizontalArrangement = Arrangement.spacedBy(2.dp),
+            ) {
+                Text(
+                    text = value,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                if (!unit.isNullOrBlank()) {
+                    Text(
+                        text = unit,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(bottom = 2.dp),
+                        maxLines = 1,
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Large metric squircle tile retained for structured wallet analytics cards.
  */
 @Composable
 fun BentoMetricTile(
@@ -265,103 +340,27 @@ fun HeroAtAGlanceCard(
     if (onClick != null) {
         Surface(
             modifier = modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(32.dp),
+            shape = RoundedCornerShape(24.dp),
             color = containerColor,
             contentColor = contentColor,
             onClick = onClick,
         ) {
             Column(
-                modifier = Modifier.padding(20.dp),
+                modifier = Modifier.padding(18.dp),
                 content = content,
             )
         }
     } else {
         Surface(
             modifier = modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(32.dp),
+            shape = RoundedCornerShape(24.dp),
             color = containerColor,
             contentColor = contentColor,
         ) {
             Column(
-                modifier = Modifier.padding(20.dp),
+                modifier = Modifier.padding(18.dp),
                 content = content,
             )
-        }
-    }
-}
-
-@Composable
-fun BentoWideCard(
-    title: String,
-    subtitle: String,
-    icon: ImageVector,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-    trailingBadge: String? = null,
-    containerColor: Color = MaterialTheme.colorScheme.surfaceContainerLowest,
-    iconContainerColor: Color = MaterialTheme.colorScheme.primaryContainer,
-    iconTint: Color = MaterialTheme.colorScheme.onPrimaryContainer,
-) {
-    Surface(
-        modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(28.dp),
-        color = containerColor,
-        contentColor = MaterialTheme.colorScheme.onSurface,
-        onClick = onClick,
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 18.dp, vertical = 16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(14.dp),
-        ) {
-            Surface(
-                shape = CircleShape,
-                color = iconContainerColor,
-                contentColor = iconTint,
-                modifier = Modifier.size(44.dp),
-            ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Icon(
-                        imageVector = icon,
-                        contentDescription = null,
-                        modifier = Modifier.size(22.dp),
-                    )
-                }
-            }
-            Column(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(2.dp),
-            ) {
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Text(
-                    text = subtitle,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-            if (!trailingBadge.isNullOrBlank()) {
-                Surface(
-                    shape = CircleShape,
-                    color = iconContainerColor,
-                    contentColor = iconTint,
-                ) {
-                    Text(
-                        text = trailingBadge,
-                        style = MaterialTheme.typography.labelMedium,
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                    )
-                }
-            }
         }
     }
 }

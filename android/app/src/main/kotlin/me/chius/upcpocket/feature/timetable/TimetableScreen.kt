@@ -31,7 +31,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.CalendarMonth
 import androidx.compose.material.icons.rounded.CloudOff
 import androidx.compose.material.icons.rounded.ExpandMore
 import androidx.compose.material.icons.rounded.LockOpen
@@ -98,7 +97,6 @@ fun TimetableScreen(
     uiState: TimetableUiState,
     bottomNavPadding: Dp,
     onOpenSchoolAccount: () -> Unit,
-    onOpenAcademicCalendar: () -> Unit,
     onRefresh: () -> Unit,
     onSelectWeek: (TimetableTermInfo, Int) -> Unit,
     onAdoptWebViewCookies: (Map<String, String>, ControlledWebViewContract.SessionContext) -> Unit,
@@ -317,9 +315,6 @@ fun TimetableScreen(
                             },
                             contentDescription = "切换周网格与日程列表",
                         )
-                    }
-                    IconButton(onClick = onOpenAcademicCalendar) {
-                        Icon(Icons.Rounded.CalendarMonth, contentDescription = "校历")
                     }
                     if (accountState.status == AccountStatus.SAVED_UNVERIFIED) {
                         IconButton(

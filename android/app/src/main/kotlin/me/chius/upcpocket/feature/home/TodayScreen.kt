@@ -1,6 +1,5 @@
 package me.chius.upcpocket.feature.home
 
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -13,23 +12,16 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.AccountBalanceWallet
 import androidx.compose.material.icons.rounded.Bolt
-import androidx.compose.material.icons.rounded.CalendarMonth
 import androidx.compose.material.icons.rounded.CreditCard
-import androidx.compose.material.icons.rounded.EmojiEvents
 import androidx.compose.material.icons.rounded.EventSeat
-import androidx.compose.material.icons.rounded.MeetingRoom
 import androidx.compose.material.icons.rounded.School
-import androidx.compose.material.icons.rounded.Schedule
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -37,10 +29,12 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -51,12 +45,14 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 import me.chius.upcpocket.core.data.AppPreferencesState
-import me.chius.upcpocket.core.designsystem.components.BentoMetricTile
-import me.chius.upcpocket.core.designsystem.components.BentoWideCard
-import me.chius.upcpocket.core.designsystem.components.GoogleTopBar
+import me.chius.upcpocket.core.designsystem.components.CompactGlanceChip
+import me.chius.upcpocket.core.designsystem.components.ExpressiveGroupedCard
+import me.chius.upcpocket.core.designsystem.components.ExpressiveSectionHeader
+import me.chius.upcpocket.core.designsystem.components.GoogleSearchPillBar
 import me.chius.upcpocket.core.designsystem.components.HeroAtAGlanceCard
+import me.chius.upcpocket.core.designsystem.components.QuickSearchSheet
+import me.chius.upcpocket.core.designsystem.theme.GroupedCardPosition
 import me.chius.upcpocket.core.model.AccountStatus
-import me.chius.upcpocket.core.model.CampusPreference
 import me.chius.upcpocket.core.model.SchoolAccountState
 import me.chius.upcpocket.feature.card.CardBalanceUiState
 import me.chius.upcpocket.feature.grades.GpaCalculator
@@ -94,6 +90,8 @@ fun TodayScreen(
     onOpenShiguang: () -> Unit,
     onOpenAcademicCalendar: () -> Unit,
 ) {
+    var showSearchSheet by remember { mutableStateOf(false) }
+
     LaunchedEffect(accountState.status, accountState.generation) {
         if (accountState.status == AccountStatus.SAVED_UNVERIFIED) {
             val stale = System.currentTimeMillis() - preferences.lastAutoSyncEpochMillis > AUTO_SYNC_STALE_MS
@@ -101,6 +99,23 @@ fun TodayScreen(
                 onSmartAutoSync(false)
             }
         }
+    }
+
+    if (showSearchSheet) {
+        QuickSearchSheet(
+            timetableWeek = timetableState.weekData,
+            onDismiss = { showSearchSheet = false },
+            onOpenTimetableTab = onOpenTimetableTab,
+            onOpenGrades = onOpenGrades,
+            onOpenShiguang = onOpenShiguang,
+            onOpenLibrarySeat = onOpenLibrarySeat,
+            onOpenFreeClassroom = onOpenFreeClassroom,
+            onOpenCardWallet = onOpenCardWallet,
+            onOpenPower = onOpenPower,
+            onOpenAcademicCalendar = onOpenAcademicCalendar,
+            onOpenSchoolAccount = onOpenSchoolAccount,
+            onOpenSettings = onOpenSettings,
+        )
     }
 
     val shanghaiZone = remember { ZoneId.of("Asia/Shanghai") }
@@ -123,9 +138,12 @@ fun TodayScreen(
         TimetableSchedule.resolveTodayStatus(todayMeetings, minuteOfDay)
     }
 
-    val weekChipText = timetableState.currentSchoolWeek?.let { "第 $it 周" }
-        ?: timetableState.todaySummary?.weekNumber?.let { "第 $it 周" }
-        ?: if (preferences.campus != CampusPreference.ALL) preferences.campus.displayName else null
+    val weekChipText = when {
+        isAutoSyncing -> "同步中"
+        timetableState.currentSchoolWeek != null -> "第 ${timetableState.currentSchoolWeek} 周"
+        timetableState.todaySummary?.weekNumber != null -> "第 ${timetableState.todaySummary.weekNumber} 周"
+        else -> null
+    }
 
     val accountInitials = accountState.maskedLoginName?.take(2)?.uppercase(Locale.ROOT)
     val gradesSummary = remember(gradesState.snapshot) {
@@ -136,15 +154,13 @@ fun TodayScreen(
         }
     }
 
-    Column(
-        modifier = Modifier.fillMaxSize(),
-    ) {
-        GoogleTopBar(
-            title = "今日",
+    Column(modifier = Modifier.fillMaxSize()) {
+        GoogleSearchPillBar(
+            placeholder = "搜索课程、成绩或校园服务",
             isAccountConfigured = accountState.status == AccountStatus.SAVED_UNVERIFIED,
+            onBarClick = { showSearchSheet = true },
             onAccountClick = onOpenSettings,
-            subtitleChip = weekChipText,
-            onChipClick = if (timetableState.currentSchoolWeek != null) onOpenTimetableTab else null,
+            trailingChip = weekChipText,
             accountBadgeText = accountInitials,
         )
 
@@ -158,11 +174,52 @@ fun TodayScreen(
                 contentPadding = PaddingValues(
                     start = 16.dp,
                     end = 16.dp,
-                    top = 4.dp,
+                    top = 6.dp,
                     bottom = bottomNavPadding + 24.dp,
                 ),
-                verticalArrangement = Arrangement.spacedBy(14.dp),
+                verticalArrangement = Arrangement.spacedBy(2.dp),
             ) {
+                item {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 10.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        val cardSnap = cardBalanceState.snapshot
+                        CompactGlanceChip(
+                            label = "校园卡",
+                            value = cardSnap?.totalBalanceText ?: "--",
+                            unit = if (cardSnap != null) "元" else null,
+                            icon = Icons.Rounded.CreditCard,
+                            iconTint = MaterialTheme.colorScheme.primary,
+                            onClick = onOpenCardWallet,
+                            modifier = Modifier.weight(1f),
+                        )
+
+                        val reading = powerState.lastReading
+                        CompactGlanceChip(
+                            label = "宿舍电量",
+                            value = reading?.kwhText ?: "--",
+                            unit = if (reading != null) "度" else null,
+                            icon = Icons.Rounded.Bolt,
+                            iconTint = MaterialTheme.colorScheme.tertiary,
+                            onClick = onOpenPower,
+                            modifier = Modifier.weight(1f),
+                        )
+
+                        val gpa = gradesSummary?.officialGpa
+                        CompactGlanceChip(
+                            label = "绩点 GPA",
+                            value = gpa?.let { "%.2f".format(Locale.ROOT, it) } ?: "--",
+                            icon = Icons.Rounded.School,
+                            iconTint = MaterialTheme.colorScheme.secondary,
+                            onClick = onOpenGrades,
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
+                }
+
                 item {
                     HeroAtAGlanceCard(
                         containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.72f),
@@ -172,6 +229,7 @@ fun TodayScreen(
                         } else {
                             onOpenSchoolAccount
                         },
+                        modifier = Modifier.padding(bottom = 14.dp),
                     ) {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
@@ -209,7 +267,7 @@ fun TodayScreen(
                             accountState.status != AccountStatus.SAVED_UNVERIFIED -> {
                                 Text(
                                     text = "连接你的学校账号",
-                                    style = MaterialTheme.typography.headlineMedium,
+                                    style = MaterialTheme.typography.headlineSmall,
                                     fontWeight = FontWeight.Bold,
                                 )
                                 Spacer(modifier = Modifier.height(4.dp))
@@ -264,7 +322,7 @@ fun TodayScreen(
                                 )
                                 Spacer(modifier = Modifier.height(4.dp))
                                 Text(
-                                    text = "已完成今日 ${todayStatus.completedCount} 节课程安排，点按查看完整课表。",
+                                    text = "已完成今日 ${todayStatus.completedCount} 节课程安排，点按查看完整周课表。",
                                     style = MaterialTheme.typography.bodyMedium,
                                 )
                             }
@@ -279,7 +337,7 @@ fun TodayScreen(
                                     text = if (timetableState.weekData == null) {
                                         "向下拉动即可自动刷新课表与校园实时状态。"
                                     } else {
-                                        "享受自由时间，可顺手查看空教室或预约图书馆座位。"
+                                        "享受自由时间，点按此卡可查看完整周课表。"
                                     },
                                     style = MaterialTheme.typography.bodyMedium,
                                 )
@@ -290,7 +348,7 @@ fun TodayScreen(
                         if (activeReservation != null) {
                             Spacer(modifier = Modifier.height(12.dp))
                             Surface(
-                                shape = RoundedCornerShape(16.dp),
+                                shape = RoundedCornerShape(14.dp),
                                 color = MaterialTheme.colorScheme.surface.copy(alpha = 0.65f),
                                 contentColor = MaterialTheme.colorScheme.onSurface,
                                 onClick = onOpenLibrarySeat,
@@ -326,143 +384,21 @@ fun TodayScreen(
                     }
                 }
 
-                item {
-                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(12.dp),
-                        ) {
-                            val cardSnap = cardBalanceState.snapshot
-                            BentoMetricTile(
-                                title = "校园卡",
-                                icon = Icons.Rounded.CreditCard,
-                                metricValue = cardSnap?.totalBalanceText ?: "--",
-                                metricUnit = if (cardSnap != null) "元" else null,
-                                subtitle = if (cardSnap != null && cardSnap.transitionCents > 0L) {
-                                    "含过渡 ¥${cardSnap.transitionText}"
-                                } else {
-                                    "流水与微信充值"
-                                },
-                                onClick = onOpenCardWallet,
-                                modifier = Modifier.weight(1f),
-                                iconContainerColor = MaterialTheme.colorScheme.primaryContainer,
-                                iconTint = MaterialTheme.colorScheme.onPrimaryContainer,
-                            )
-
-                            val reading = powerState.lastReading
-                            val kwhFloat = reading?.kwhText?.toFloatOrNull()
-                            BentoMetricTile(
-                                title = "宿舍电量",
-                                icon = Icons.Rounded.Bolt,
-                                metricValue = reading?.kwhText ?: if (powerState.hasBoundDormitory) "--" else "未绑定",
-                                metricUnit = if (reading != null) "度" else null,
-                                subtitle = when {
-                                    reading != null -> "${reading.building} · ${reading.room}"
-                                    powerState.hasBoundDormitory -> "${powerState.boundBuilding} · ${powerState.boundRoom}"
-                                    else -> "点击绑定常用宿舍"
-                                },
-                                progress = kwhFloat?.let { (it / 200f).coerceIn(0.05f, 1f) },
-                                onClick = onOpenPower,
-                                modifier = Modifier.weight(1f),
-                                iconContainerColor = MaterialTheme.colorScheme.tertiaryContainer,
-                                iconTint = MaterialTheme.colorScheme.onTertiaryContainer,
-                            )
-                        }
-
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(12.dp),
-                        ) {
-                            val activeRes = librarySeatState.libseatCurrentReservations.firstOrNull()
-                            val totalFreeSeats = librarySeatState.libseatRooms.sumOf { it.freeSeats ?: 0 }
-                            BentoMetricTile(
-                                title = "图书馆",
-                                icon = Icons.Rounded.EventSeat,
-                                metricValue = when {
-                                    activeRes != null -> activeRes.statusLabel
-                                    librarySeatState.libseatRooms.isNotEmpty() -> "$totalFreeSeats"
-                                    else -> "选座"
-                                },
-                                metricUnit = if (activeRes == null && librarySeatState.libseatRooms.isNotEmpty()) "空座" else null,
-                                subtitle = activeRes?.location
-                                    ?: librarySeatState.activeTab.label,
-                                onClick = onOpenLibrarySeat,
-                                modifier = Modifier.weight(1f),
-                                iconContainerColor = MaterialTheme.colorScheme.secondaryContainer,
-                                iconTint = MaterialTheme.colorScheme.onSecondaryContainer,
-                            )
-
-                            val gpaVal = gradesSummary?.officialGpa
-                            val avgVal = gradesSummary?.weightedAverage
-                            BentoMetricTile(
-                                title = "成绩 · GPA",
-                                icon = Icons.Rounded.School,
-                                metricValue = gpaVal?.let { "%.2f".format(Locale.ROOT, it) } ?: "--",
-                                metricUnit = if (gpaVal != null) "GPA" else null,
-                                subtitle = avgVal?.let {
-                                    "加权 %.2f · ${gradesSummary.courseCount} 门".format(Locale.ROOT, it)
-                                } ?: "教务成绩与保研推算",
-                                onClick = onOpenGrades,
-                                modifier = Modifier.weight(1f),
-                                iconContainerColor = MaterialTheme.colorScheme.primaryContainer,
-                                iconTint = MaterialTheme.colorScheme.onPrimaryContainer,
-                            )
-                        }
-                    }
-                }
-
-                item {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        QuickPillChip("空闲教室", Icons.Rounded.MeetingRoom, onOpenFreeClassroom)
-                        QuickPillChip("石光二课", Icons.Rounded.EmojiEvents, onOpenShiguang)
-                        QuickPillChip("官方校历", Icons.Rounded.CalendarMonth, onOpenAcademicCalendar)
-                        QuickPillChip("校园卡充值", Icons.Rounded.AccountBalanceWallet, onOpenCardWallet)
-                    }
-                }
-
                 if (todayMeetings.isNotEmpty()) {
                     item {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(top = 4.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Text(
-                                text = "今日日程",
-                                style = MaterialTheme.typography.titleLarge,
-                                fontWeight = FontWeight.SemiBold,
-                            )
-                            FilledTonalButton(
-                                onClick = onOpenTimetableTab,
-                                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
-                            ) {
-                                Text("完整周课表", style = MaterialTheme.typography.labelLarge)
-                            }
-                        }
-                    }
-
-                    items(
-                        items = todayMeetings,
-                        key = { "${it.courseName}_${it.startPeriod}_${it.endPeriod}" },
-                    ) { meeting ->
-                        TodayCourseCard(
-                            meeting = meeting,
-                            onClick = onOpenTimetableTab,
+                        ExpressiveSectionHeader(
+                            title = "今日日程",
+                            modifier = Modifier.padding(bottom = 4.dp),
                         )
                     }
-                } else if (accountState.status == AccountStatus.SAVED_UNVERIFIED) {
-                    item {
-                        BentoWideCard(
-                            title = "打开完整课表",
-                            subtitle = "查看本周课程网格、前后滑动切换教学周",
-                            icon = Icons.Rounded.Schedule,
+
+                    itemsIndexed(
+                        items = todayMeetings,
+                        key = { idx, item -> "${idx}_${item.courseName}_${item.startPeriod}_${item.endPeriod}" },
+                    ) { index, meeting ->
+                        TodayCourseRow(
+                            meeting = meeting,
+                            position = GroupedCardPosition.forIndex(index, todayMeetings.size),
                             onClick = onOpenTimetableTab,
                         )
                     }
@@ -473,47 +409,14 @@ fun TodayScreen(
 }
 
 @Composable
-private fun QuickPillChip(
-    label: String,
-    icon: ImageVector,
-    onClick: () -> Unit,
-) {
-    Surface(
-        shape = CircleShape,
-        color = MaterialTheme.colorScheme.surfaceContainerLowest,
-        contentColor = MaterialTheme.colorScheme.onSurface,
-        onClick = onClick,
-    ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-        ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = null,
-                modifier = Modifier.size(16.dp),
-                tint = MaterialTheme.colorScheme.primary,
-            )
-            Text(
-                text = label,
-                style = MaterialTheme.typography.labelLarge,
-            )
-        }
-    }
-}
-
-@Composable
-private fun TodayCourseCard(
+private fun TodayCourseRow(
     meeting: CourseMeeting,
+    position: GroupedCardPosition,
     onClick: () -> Unit,
 ) {
-    Surface(
-        shape = RoundedCornerShape(24.dp),
-        color = MaterialTheme.colorScheme.surfaceContainerLowest,
-        contentColor = MaterialTheme.colorScheme.onSurface,
+    ExpressiveGroupedCard(
+        position = position,
         onClick = onClick,
-        modifier = Modifier.fillMaxWidth(),
     ) {
         Row(
             modifier = Modifier
@@ -523,12 +426,12 @@ private fun TodayCourseCard(
             horizontalArrangement = Arrangement.spacedBy(14.dp),
         ) {
             Surface(
-                shape = RoundedCornerShape(16.dp),
+                shape = RoundedCornerShape(14.dp),
                 color = MaterialTheme.colorScheme.primaryContainer,
                 contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
             ) {
                 Box(
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
                     contentAlignment = Alignment.Center,
                 ) {
                     Text(

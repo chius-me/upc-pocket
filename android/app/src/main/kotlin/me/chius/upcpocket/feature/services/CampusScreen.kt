@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.rounded.Bolt
 import androidx.compose.material.icons.rounded.CalendarMonth
 import androidx.compose.material.icons.rounded.CreditCard
@@ -16,21 +17,29 @@ import androidx.compose.material.icons.rounded.EmojiEvents
 import androidx.compose.material.icons.rounded.EventSeat
 import androidx.compose.material.icons.rounded.MeetingRoom
 import androidx.compose.material.icons.rounded.School
-import androidx.compose.material.icons.rounded.Settings
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import java.util.Locale
-import me.chius.upcpocket.core.designsystem.components.BentoMetricTile
-import me.chius.upcpocket.core.designsystem.components.BentoWideCard
-import me.chius.upcpocket.core.designsystem.components.GoogleTopBar
+import me.chius.upcpocket.core.designsystem.components.ExpressiveListRow
+import me.chius.upcpocket.core.designsystem.components.ExpressiveSectionHeader
+import me.chius.upcpocket.core.designsystem.components.ExpressiveStatusBadge
+import me.chius.upcpocket.core.designsystem.components.GoogleSearchPillBar
+import me.chius.upcpocket.core.designsystem.components.QuickSearchSheet
+import me.chius.upcpocket.core.designsystem.theme.GroupedCardPosition
 import me.chius.upcpocket.core.model.AccountStatus
 import me.chius.upcpocket.core.model.CampusPreference
 import me.chius.upcpocket.core.model.SchoolAccountState
@@ -42,11 +51,13 @@ import me.chius.upcpocket.feature.library.LibrarySeatUiState
 import me.chius.upcpocket.feature.power.PowerUiState
 import me.chius.upcpocket.feature.shiguang.ShiguangUiState
 import me.chius.upcpocket.feature.timetable.TimetableSchedule
+import me.chius.upcpocket.feature.timetable.TimetableUiState
 
 @Composable
 fun CampusScreen(
     campus: CampusPreference,
     accountState: SchoolAccountState,
+    timetableState: TimetableUiState,
     gradesState: GradesUiState,
     shiguangState: ShiguangUiState,
     librarySeatState: LibrarySeatUiState,
@@ -55,6 +66,8 @@ fun CampusScreen(
     bottomNavPadding: Dp,
     onSelectCampus: (CampusPreference) -> Unit,
     onOpenSettings: () -> Unit,
+    onOpenSchoolAccount: () -> Unit,
+    onOpenTimetableTab: () -> Unit,
     onOpenGrades: () -> Unit,
     onOpenShiguang: () -> Unit,
     onOpenLibrarySeat: () -> Unit,
@@ -63,6 +76,25 @@ fun CampusScreen(
     onOpenPower: () -> Unit,
     onOpenAcademicCalendar: () -> Unit,
 ) {
+    var showSearchSheet by remember { mutableStateOf(false) }
+
+    if (showSearchSheet) {
+        QuickSearchSheet(
+            timetableWeek = timetableState.weekData,
+            onDismiss = { showSearchSheet = false },
+            onOpenTimetableTab = onOpenTimetableTab,
+            onOpenGrades = onOpenGrades,
+            onOpenShiguang = onOpenShiguang,
+            onOpenLibrarySeat = onOpenLibrarySeat,
+            onOpenFreeClassroom = onOpenFreeClassroom,
+            onOpenCardWallet = onOpenCardWallet,
+            onOpenPower = onOpenPower,
+            onOpenAcademicCalendar = onOpenAcademicCalendar,
+            onOpenSchoolAccount = onOpenSchoolAccount,
+            onOpenSettings = onOpenSettings,
+        )
+    }
+
     val accountInitials = accountState.maskedLoginName?.take(2)?.uppercase(Locale.ROOT)
     val gradesSummary = remember(gradesState.snapshot) {
         gradesState.snapshot?.let { snap ->
@@ -75,18 +107,15 @@ fun CampusScreen(
         val now = java.time.LocalTime.now(java.time.ZoneId.of("Asia/Shanghai"))
         TimetableSchedule.currentOrNextPeriod(now.hour * 60 + now.minute)
     }
+    val campusLabel = if (campus == CampusPreference.GUZHENKOU) "古镇口" else "唐岛湾"
 
     Column(modifier = Modifier.fillMaxSize()) {
-        GoogleTopBar(
-            title = "校园",
+        GoogleSearchPillBar(
+            placeholder = "搜索校园服务与功能",
             isAccountConfigured = accountState.status == AccountStatus.SAVED_UNVERIFIED,
+            onBarClick = { showSearchSheet = true },
             onAccountClick = onOpenSettings,
             accountBadgeText = accountInitials,
-            actions = {
-                IconButton(onClick = onOpenSettings) {
-                    Icon(Icons.Rounded.Settings, contentDescription = "设置")
-                }
-            },
         )
 
         LazyColumn(
@@ -94,155 +123,200 @@ fun CampusScreen(
             contentPadding = PaddingValues(
                 start = 16.dp,
                 end = 16.dp,
-                top = 4.dp,
+                top = 6.dp,
                 bottom = bottomNavPadding + 24.dp,
             ),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+            verticalArrangement = Arrangement.spacedBy(2.dp),
         ) {
             item {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                SingleChoiceSegmentedButtonRow(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 14.dp),
                 ) {
-                    CampusPreference.entries.forEach { option ->
-                        FilterChip(
+                    val options = CampusPreference.entries
+                    options.forEachIndexed { index, option ->
+                        SegmentedButton(
+                            shape = SegmentedButtonDefaults.itemShape(index = index, count = options.size),
                             selected = campus == option,
                             onClick = { onSelectCampus(option) },
-                            label = { Text(option.displayName) },
+                            label = {
+                                Text(
+                                    text = option.displayName,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                            },
                         )
                     }
                 }
             }
 
             item {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                ) {
-                    val gpa = gradesSummary?.officialGpa
-                    BentoMetricTile(
-                        title = "成绩 · GPA",
-                        icon = Icons.Rounded.School,
-                        metricValue = gpa?.let { "%.2f".format(Locale.ROOT, it) } ?: "查询",
-                        metricUnit = if (gpa != null) "GPA" else null,
-                        subtitle = gradesSummary?.weightedAverage?.let {
-                            "加权 %.2f · %.1f 学分".format(Locale.ROOT, it, gradesSummary.passedCredits)
-                        } ?: "加权均分与分数推演",
-                        onClick = onOpenGrades,
-                        modifier = Modifier.weight(1f),
-                        iconContainerColor = MaterialTheme.colorScheme.primaryContainer,
-                        iconTint = MaterialTheme.colorScheme.onPrimaryContainer,
-                    )
-
-                    val hours = shiguangState.summary?.totalHours
-                    val actCount = shiguangState.activitiesPage?.items?.size
-                    BentoMetricTile(
-                        title = "石光二课",
-                        icon = Icons.Rounded.EmojiEvents,
-                        metricValue = hours?.toPlainString() ?: actCount?.toString() ?: "二课",
-                        metricUnit = if (hours != null) "学时" else if (actCount != null) "活动" else null,
-                        subtitle = if (shiguangState.summary != null) {
-                            "五大模块学分成绩单"
-                        } else {
-                            "第二课堂活动与学时"
-                        },
-                        onClick = onOpenShiguang,
-                        modifier = Modifier.weight(1f),
-                        iconContainerColor = MaterialTheme.colorScheme.secondaryContainer,
-                        iconTint = MaterialTheme.colorScheme.onSecondaryContainer,
-                    )
-                }
+                ExpressiveSectionHeader(
+                    title = "学业与教务",
+                    modifier = Modifier.padding(bottom = 4.dp),
+                )
             }
 
             item {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                ) {
-                    val activeRes = librarySeatState.libseatCurrentReservations.firstOrNull()
-                    val freeCount = librarySeatState.libseatRooms.sumOf { it.freeSeats ?: 0 }
-                    BentoMetricTile(
-                        title = "图书馆选座",
-                        icon = Icons.Rounded.EventSeat,
-                        metricValue = when {
-                            activeRes != null -> activeRes.statusLabel
-                            librarySeatState.libseatRooms.isNotEmpty() -> "$freeCount"
-                            campus == CampusPreference.GUZHENKOU -> "古镇口"
-                            else -> "唐岛湾"
-                        },
-                        metricUnit = if (activeRes == null && librarySeatState.libseatRooms.isNotEmpty()) "空座" else null,
-                        subtitle = activeRes?.location ?: "支持选座预约与取消",
-                        onClick = onOpenLibrarySeat,
-                        modifier = Modifier.weight(1f),
-                        iconContainerColor = MaterialTheme.colorScheme.tertiaryContainer,
-                        iconTint = MaterialTheme.colorScheme.onTertiaryContainer,
-                    )
-
-                    BentoMetricTile(
-                        title = "空闲教室",
-                        icon = Icons.Rounded.MeetingRoom,
-                        metricValue = "第 $currentPeriod 节",
-                        subtitle = "${if (campus == CampusPreference.GUZHENKOU) "古镇口" else "唐岛湾"}实时空房查询",
-                        onClick = onOpenFreeClassroom,
-                        modifier = Modifier.weight(1f),
-                        iconContainerColor = MaterialTheme.colorScheme.primaryContainer,
-                        iconTint = MaterialTheme.colorScheme.onPrimaryContainer,
-                    )
-                }
+                val gpa = gradesSummary?.officialGpa
+                val gradeBadge = gpa?.let { "GPA %.2f".format(Locale.ROOT, it) } ?: "查询"
+                val gradeSubtitle = gradesSummary?.weightedAverage?.let {
+                    "加权 %.2f · %.1f 学分".format(Locale.ROOT, it, gradesSummary.passedCredits)
+                } ?: "教务成绩单、加权均分与分数推演"
+                ExpressiveListRow(
+                    title = "成绩与 GPA",
+                    subtitle = gradeSubtitle,
+                    leadingIcon = Icons.Rounded.School,
+                    leadingContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                    leadingContentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                    position = GroupedCardPosition.TOP,
+                    trailingContent = { TrailingValueChevron(gradeBadge) },
+                    onClick = onOpenGrades,
+                )
             }
 
             item {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                ) {
-                    val cardSnap = cardBalanceState.snapshot
-                    BentoMetricTile(
-                        title = "校园卡包",
-                        icon = Icons.Rounded.CreditCard,
-                        metricValue = cardSnap?.totalBalanceText ?: "余额",
-                        metricUnit = if (cardSnap != null) "元" else null,
-                        subtitle = "消费流水统计与微信充值",
-                        onClick = onOpenCardWallet,
-                        modifier = Modifier.weight(1f),
-                        iconContainerColor = MaterialTheme.colorScheme.secondaryContainer,
-                        iconTint = MaterialTheme.colorScheme.onSecondaryContainer,
-                    )
-
-                    val reading = powerState.lastReading
-                    val kwhFloat = reading?.kwhText?.toFloatOrNull()
-                    BentoMetricTile(
-                        title = "宿舍电量",
-                        icon = Icons.Rounded.Bolt,
-                        metricValue = reading?.kwhText ?: if (campus == CampusPreference.GUZHENKOU) "古镇口" else "查询",
-                        metricUnit = if (reading != null) "度" else null,
-                        subtitle = if (reading != null) {
-                            "${reading.building} · ${reading.room}"
-                        } else if (campus == CampusPreference.GUZHENKOU) {
-                            "唐岛湾直查 / 古镇口官方页"
-                        } else {
-                            "绑定宿舍后首页实时追踪"
-                        },
-                        progress = kwhFloat?.let { (it / 200f).coerceIn(0.05f, 1f) },
-                        onClick = onOpenPower,
-                        modifier = Modifier.weight(1f),
-                        iconContainerColor = MaterialTheme.colorScheme.tertiaryContainer,
-                        iconTint = MaterialTheme.colorScheme.onTertiaryContainer,
-                    )
+                val hours = shiguangState.summary?.totalHours
+                val actCount = shiguangState.activitiesPage?.items?.size
+                val shiguangBadge = when {
+                    hours != null -> "${hours.stripTrailingZeros().toPlainString()} 学时"
+                    actCount != null -> "$actCount 项"
+                    else -> "进入"
                 }
+                ExpressiveListRow(
+                    title = "石光第二课堂",
+                    subtitle = if (shiguangState.summary != null) {
+                        "五大模块学分学时成绩单"
+                    } else {
+                        "第二课堂活动列表与学时统计"
+                    },
+                    leadingIcon = Icons.Rounded.EmojiEvents,
+                    leadingContainerColor = MaterialTheme.colorScheme.secondaryContainer,
+                    leadingContentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                    position = GroupedCardPosition.MIDDLE,
+                    trailingContent = { TrailingValueChevron(shiguangBadge) },
+                    onClick = onOpenShiguang,
+                )
             }
 
             item {
-                BentoWideCard(
+                ExpressiveListRow(
                     title = "官方校历",
-                    subtitle = "同步教务处最新学年校历原图，支持双指缩放高清浏览与离线缓存",
-                    icon = Icons.Rounded.CalendarMonth,
-                    trailingBadge = "查看",
+                    subtitle = "教务处最新学年校历高清浏览与离线缓存",
+                    leadingIcon = Icons.Rounded.CalendarMonth,
+                    leadingContainerColor = MaterialTheme.colorScheme.tertiaryContainer,
+                    leadingContentColor = MaterialTheme.colorScheme.onTertiaryContainer,
+                    position = GroupedCardPosition.BOTTOM,
+                    modifier = Modifier.padding(bottom = 14.dp),
+                    trailingContent = { TrailingValueChevron("查看") },
                     onClick = onOpenAcademicCalendar,
-                    iconContainerColor = MaterialTheme.colorScheme.primaryContainer,
-                    iconTint = MaterialTheme.colorScheme.onPrimaryContainer,
+                )
+            }
+
+            item {
+                ExpressiveSectionHeader(
+                    title = "学习空间",
+                    modifier = Modifier.padding(bottom = 4.dp),
+                )
+            }
+
+            item {
+                val activeRes = librarySeatState.libseatCurrentReservations.firstOrNull()
+                val freeCount = librarySeatState.libseatRooms.sumOf { it.freeSeats ?: 0 }
+                val seatBadge = when {
+                    activeRes != null -> activeRes.statusLabel
+                    librarySeatState.libseatRooms.isNotEmpty() -> "余 $freeCount 座"
+                    else -> "选座"
+                }
+                ExpressiveListRow(
+                    title = "图书馆选座",
+                    subtitle = activeRes?.location ?: "${if (campus == CampusPreference.GUZHENKOU) "古镇口 / 求是" else "唐岛湾"}预约选座与取消",
+                    leadingIcon = Icons.Rounded.EventSeat,
+                    leadingContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                    leadingContentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                    position = GroupedCardPosition.TOP,
+                    trailingContent = { TrailingValueChevron(seatBadge) },
+                    onClick = onOpenLibrarySeat,
+                )
+            }
+
+            item {
+                ExpressiveListRow(
+                    title = "空闲教室",
+                    subtitle = "${campusLabel}校区实时空房查询",
+                    leadingIcon = Icons.Rounded.MeetingRoom,
+                    leadingContainerColor = MaterialTheme.colorScheme.secondaryContainer,
+                    leadingContentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                    position = GroupedCardPosition.BOTTOM,
+                    modifier = Modifier.padding(bottom = 14.dp),
+                    trailingContent = { TrailingValueChevron("第 $currentPeriod 节") },
+                    onClick = onOpenFreeClassroom,
+                )
+            }
+
+            item {
+                ExpressiveSectionHeader(
+                    title = "校园生活",
+                    modifier = Modifier.padding(bottom = 4.dp),
+                )
+            }
+
+            item {
+                val cardSnap = cardBalanceState.snapshot
+                val cardBadge = cardSnap?.totalBalanceText?.let { "¥$it" } ?: "钱包"
+                ExpressiveListRow(
+                    title = "校园卡与充值",
+                    subtitle = "消费流水柱图统计与微信充值",
+                    leadingIcon = Icons.Rounded.CreditCard,
+                    leadingContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                    leadingContentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                    position = GroupedCardPosition.TOP,
+                    trailingContent = { TrailingValueChevron(cardBadge) },
+                    onClick = onOpenCardWallet,
+                )
+            }
+
+            item {
+                val reading = powerState.lastReading
+                val powerBadge = reading?.kwhText?.let { "$it 度" } ?: "查询"
+                val powerSubtitle = when {
+                    reading != null -> "${reading.building} · ${reading.room}"
+                    powerState.hasBoundDormitory -> "已绑定 ${powerState.boundBuilding} · ${powerState.boundRoom}"
+                    campus == CampusPreference.GUZHENKOU -> "唐岛湾直查 / 古镇口官方页"
+                    else -> "绑定常用宿舍后首页自动追踪"
+                }
+                ExpressiveListRow(
+                    title = "宿舍电量",
+                    subtitle = powerSubtitle,
+                    leadingIcon = Icons.Rounded.Bolt,
+                    leadingContainerColor = MaterialTheme.colorScheme.tertiaryContainer,
+                    leadingContentColor = MaterialTheme.colorScheme.onTertiaryContainer,
+                    position = GroupedCardPosition.BOTTOM,
+                    trailingContent = { TrailingValueChevron(powerBadge) },
+                    onClick = onOpenPower,
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun TrailingValueChevron(badgeText: String) {
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        ExpressiveStatusBadge(
+            text = badgeText,
+            containerColor = MaterialTheme.colorScheme.secondaryContainer,
+            contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+        )
+        Icon(
+            imageVector = Icons.AutoMirrored.Rounded.KeyboardArrowRight,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }

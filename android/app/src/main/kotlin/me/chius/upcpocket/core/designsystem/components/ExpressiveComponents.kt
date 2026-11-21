@@ -56,7 +56,7 @@ fun ExpressiveSectionHeader(
 fun ExpressiveGroupedCard(
     position: GroupedCardPosition,
     modifier: Modifier = Modifier,
-    containerColor: Color = MaterialTheme.colorScheme.surfaceContainerLow,
+    containerColor: Color = MaterialTheme.colorScheme.surfaceContainerLowest,
     onClick: (() -> Unit)? = null,
     content: @Composable () -> Unit,
 ) {
@@ -87,7 +87,7 @@ fun ExpressiveListRow(
     leadingIcon: ImageVector? = null,
     leadingContainerColor: Color = MaterialTheme.colorScheme.primaryContainer,
     leadingContentColor: Color = MaterialTheme.colorScheme.onPrimaryContainer,
-    containerColor: Color = MaterialTheme.colorScheme.surfaceContainerLow,
+    containerColor: Color = MaterialTheme.colorScheme.surfaceContainerLowest,
     trailingContent: (@Composable () -> Unit)? = null,
     onClick: (() -> Unit)? = null,
 ) {
