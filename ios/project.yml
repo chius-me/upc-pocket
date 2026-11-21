@@ -1,0 +1,52 @@
+name: UPCPocket
+options:
+  bundleIdPrefix: me.chius
+  deploymentTarget:
+    iOS: "18.0"
+  xcodeVersion: "16.0"
+  defaultConfig: Debug
+
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    SWIFT_STRICT_CONCURRENCY: complete
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    DEVELOPMENT_LANGUAGE: zh-Hans
+
+targets:
+  UPCPocket:
+    type: application
+    platform: iOS
+    sources:
+      - path: UPCPocket
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: me.chius.upcpocket
+        GENERATE_INFOPLIST_FILE: NO
+        INFOPLIST_FILE: UPCPocket/Resources/Info.plist
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+
+  UPCPocketTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: UPCPocketTests
+    dependencies:
+      - target: UPCPocket
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: me.chius.upcpocket.tests
+        GENERATE_INFOPLIST_FILE: YES
+
+schemes:
+  UPCPocket:
+    build:
+      targets:
+        UPCPocket: all
+        UPCPocketTests: [test]
+    test:
+      config: Debug
+      targets:
+        - name: UPCPocketTests

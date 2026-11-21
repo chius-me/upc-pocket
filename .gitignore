@@ -1,0 +1,47 @@
+# macOS & Editors
+.DS_Store
+.idea/
+*.iml
+.vscode/
+
+# Secrets & Local Overrides
+.env
+.env.*
+官方入口.txt
+keystore.properties
+local.properties
+
+# Android
+android/.gradle/
+android/.kotlin/
+android/local.properties
+android/keystore.properties
+android/build/
+android/**/build/
+android/captures/
+android/.externalNativeBuild/
+android/.cxx/
+*.apk
+*.aab
+*.jks
+*.keystore
+*.hprof
+*.db
+*.db-shm
+*.db-wal
+
+# iOS
+ios/*.xcodeproj/
+ios/*.xcworkspace/
+ios/build/
+DerivedData/
+*.xcuserdata/
+.swiftpm/
+*.ipa
+*.dSYM.zip
+*.dSYM
+
+# Scratch / Local Archives
+.local/
+artifacts/
+release/

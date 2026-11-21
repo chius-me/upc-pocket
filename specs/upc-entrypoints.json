@@ -1,0 +1,188 @@
+{
+  "schema_version": 1,
+  "school": {
+    "id": "upc",
+    "name": "中国石油大学（华东）"
+  },
+  "scope": "reference_catalog_not_runtime_configuration",
+  "mit_reference": {
+    "upstream": [
+      "https://github.com/dlam12138/UPCPocket",
+      "https://github.com/dlam12138/UPC-MCP"
+    ],
+    "pinned_upc_mcp_commit": "948f5f21ad7a12fd94b53403a07ac867209f7700",
+    "license": "MIT"
+  },
+  "cleartext_exceptions": [
+    {
+      "host": "jhzf.upc.edu.cn",
+      "include_subdomains": false,
+      "reason": "Campus card balance endpoint is HTTP-only on school server"
+    },
+    {
+      "host": "dfcz.upc.edu.cn",
+      "include_subdomains": false,
+      "reason": "Tangdaowan electricity query page is HTTP-only; takes public building/room parameters"
+    }
+  ],
+  "entries": [
+    {
+      "id": "timetable",
+      "name": "课表",
+      "category": "study",
+      "campus": "all",
+      "url": "https://app.upc.edu.cn/site/weekschedule/index",
+      "authentication": "UPC CAS (https://cas.upc.edu.cn/cas/login) -> app.upc.edu.cn callback",
+      "data_protocol": {
+        "index": "GET https://app.upc.edu.cn/timetable/wap/default/get-index",
+        "week": "POST https://app.upc.edu.cn/timetable/wap/default/get-datatmp (type=2, year, term, week)"
+      },
+      "target_milestone": "M1",
+      "integration": "native_read_only"
+    },
+    {
+      "id": "free_classroom",
+      "name": "空闲教室",
+      "category": "study",
+      "campus": "all",
+      "url": "https://app.upc.edu.cn/freeclass/wap/default/all",
+      "authentication": "Public query",
+      "target_milestone": "M1",
+      "integration": "native_read_only"
+    },
+    {
+      "id": "electricity_tangdaowan",
+      "name": "唐岛湾剩余电量",
+      "category": "life",
+      "campus": "tangdaowan",
+      "url": "http://dfcz.upc.edu.cn/ShiYou/Default.aspx",
+      "authentication": "Public building and room query (cleartext exception)",
+      "target_milestone": "M1",
+      "integration": "native_read_only"
+    },
+    {
+      "id": "electricity_guzhenkou",
+      "name": "古镇口电费",
+      "category": "life",
+      "campus": "guzhenkou",
+      "url": "https://gzkdf.upc.edu.cn/acmswx/index.aspx",
+      "authentication": "External browser page; never bypass TLS certificate verification",
+      "target_milestone": "M0",
+      "integration": "official_external_page"
+    },
+    {
+      "id": "campus_card_balance",
+      "name": "校园卡余额",
+      "category": "life",
+      "campus": "all",
+      "url": "http://jhzf.upc.edu.cn:20081/wechat/callinterface/getCardInfo.html",
+      "authentication": "Validated self student ID POST only (no password sent; cleartext exception)",
+      "target_milestone": "M1",
+      "integration": "native_read_only"
+    },
+    {
+      "id": "library_seat",
+      "name": "图书馆座位",
+      "category": "study",
+      "campus": "all",
+      "urls": [
+        "https://libspace.upc.edu.cn/libseat/",
+        "https://office.chaoxing.com/front/third/apps/seat/index",
+        "https://office.chaoxing.com/front/third/apps/seatengine/index"
+      ],
+      "authentication": "UPC CAS normal login or controlled WebView fallback",
+      "target_milestone": "M2",
+      "integration": "native_read_only"
+    },
+    {
+      "id": "academic_calendar",
+      "name": "校历（教务处）",
+      "category": "official_web",
+      "campus": "all",
+      "url": "https://jwc.upc.edu.cn/603/list.htm",
+      "authentication": "Public HTTPS",
+      "target_milestone": "M0",
+      "integration": "official_external_page"
+    },
+    {
+      "id": "academic_affairs_system",
+      "name": "教务系统",
+      "category": "official_web",
+      "campus": "all",
+      "url": "https://jwxt.upc.edu.cn/jsxsd/framework/xsMainV.htmlx",
+      "authentication": "External browser login",
+      "target_milestone": "M0",
+      "integration": "official_external_page"
+    },
+    {
+      "id": "digital_upc",
+      "name": "数字石大",
+      "category": "official_web",
+      "campus": "all",
+      "url": "https://i.upc.edu.cn/",
+      "authentication": "External browser login",
+      "target_milestone": "M0",
+      "integration": "official_external_page"
+    },
+    {
+      "id": "academic_affairs_website",
+      "name": "教务处官网",
+      "category": "official_web",
+      "campus": "all",
+      "url": "https://jwc.upc.edu.cn/",
+      "authentication": "Public HTTPS",
+      "target_milestone": "M0",
+      "integration": "official_external_page"
+    },
+    {
+      "id": "colleges_directory",
+      "name": "学院官网",
+      "category": "official_web",
+      "campus": "all",
+      "url": "https://www.upc.edu.cn/jxkydw.htm",
+      "authentication": "Public HTTPS",
+      "target_milestone": "M0",
+      "integration": "official_external_page"
+    },
+    {
+      "id": "shiguang",
+      "name": "石光（第二课堂）",
+      "category": "campus",
+      "campus": "all",
+      "url": "https://dekt.upc.edu.cn",
+      "authentication": "UPC CAS; read-only candidate",
+      "target_milestone": "M3",
+      "integration": "deferred_read_only"
+    },
+    {
+      "id": "service_portal",
+      "name": "e站通",
+      "category": "campus",
+      "campus": "all",
+      "url": "https://service.upc.edu.cn/",
+      "authentication": "UPC CAS; read-only candidate",
+      "target_milestone": "M3",
+      "integration": "deferred_read_only"
+    },
+    {
+      "id": "campus_card_history",
+      "name": "校园卡流水",
+      "category": "life",
+      "campus": "all",
+      "url": "https://mb-xyk.upc.edu.cn/berserker-auth/cas/redirect/wislearn?targetUrl=https%3A%2F%2Fmb-xyk.upc.edu.cn%2Fplat%2F%3Fname%3DloginTransit",
+      "authentication": "UPC CAS + controlled WebView fallback; read-only",
+      "target_milestone": "deferred",
+      "integration": "deferred_read_only"
+    },
+    {
+      "id": "campus_card_recharge",
+      "name": "校园卡充值",
+      "category": "life",
+      "campus": "all",
+      "url": "https://mb-xyk.upc.edu.cn/",
+      "authentication": "High-risk write operation explicitly deferred after read-only foundation",
+      "target_milestone": "deferred",
+      "integration": "deferred_write_excluded"
+    }
+  ]
+}

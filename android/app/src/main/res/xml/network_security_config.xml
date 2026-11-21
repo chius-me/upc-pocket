@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    全局禁止明文 HTTP，禁止绕过或弱化 TLS 证书校验。
+    仅放行已核实无 HTTPS 的两个精确校园域（不含子域）：
+      - jhzf.upc.edu.cn（校园卡余额接口）
+      - dfcz.upc.edu.cn（唐岛湾宿舍剩余电量查询）
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false" />
+
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">jhzf.upc.edu.cn</domain>
+        <domain includeSubdomains="false">dfcz.upc.edu.cn</domain>
+    </domain-config>
+</network-security-config>
